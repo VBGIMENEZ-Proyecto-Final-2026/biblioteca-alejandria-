@@ -45,6 +45,16 @@ Cada repo de código tiene en su README un diagrama más cercano a su responsabi
 | `backlog/` | Documentos de backlog por iteración, fuente para cargar los issues. |
 | `plantillas/` | Fuente de verdad de las plantillas (`.github/` y scripts) que se replican en los otros repos. |
 
+## Documentos de atlas-catalogo
+
+| Documento | Qué cuenta |
+| --- | --- |
+| [`arquitectura/sincronizacion-atlas-catalogo.md`](arquitectura/sincronizacion-atlas-catalogo.md) | Cómo funciona la sincronización, idempotencia y recuperación |
+| [`arquitectura/seguridad-atlas-catalogo.md`](arquitectura/seguridad-atlas-catalogo.md) | Decisiones, estado y limitaciones de seguridad |
+| [`modelo-datos/atlas-catalogo.md`](modelo-datos/atlas-catalogo.md) | Modelo de datos y decisiones A a L |
+| [`implementacion/atlas-catalogo.md`](implementacion/atlas-catalogo.md) | Evolución del código y decisiones al implementar |
+| [`evidencias/`](evidencias/) | Verificaciones contra la cátedra real, sin secretos |
+
 ## Convenciones
 
 - **Iteraciones** (campo Iteration del tablero `Odisea · Prog2`): `Isla N · Nombre`.

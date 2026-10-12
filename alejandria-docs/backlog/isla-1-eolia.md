@@ -6,7 +6,7 @@
 
 **Fuera de alcance:** comunicación y contrato entre `atlas-catalogo` y `cronos-turnos`, registro y login de usuarios finales, turnos y reservas, y `hermes-app`.
 
-**Estado del backlog:** los issues de decisiones de diseño (1 a 3) y el esqueleto del proyecto (4) están hechos (issues #5, #6, #7 y #9 de `atlas-catalogo`). Migraciones y persistencia (6) está hecho (issue #11, PR #13). El cliente REST de la cátedra (7) también está hecho (issue #12, PR #14). La sincronización completa (8) también está hecha (issue #15, PR #16). El cliente Redis (9) también está hecho (issue #17, PR #18). La sincronización incremental (10) también está hecha (issue #19, PR #20). El consumidor de Kafka (15) también está hecho (issue #21, PR #22). El resto de las tareas de la isla se agrega cuando sus decisiones estén justificadas. La numeración es la del backlog completo, por eso el 5 (seguridad base) todavía no aparece.
+**Estado del backlog:** los issues de decisiones de diseño (1 a 3) y el esqueleto del proyecto (4) están hechos (issues #5, #6, #7 y #9 de `atlas-catalogo`). Migraciones y persistencia (6) está hecho (issue #11, PR #13). El cliente REST de la cátedra (7) también está hecho (issue #12, PR #14). La sincronización completa (8) también está hecha (issue #15, PR #16). El cliente Redis (9) también está hecho (issue #17, PR #18). La sincronización incremental (10) también está hecha (issue #19, PR #20). El consumidor de Kafka (15) también está hecho (issue #21, PR #22). La documentación (13) tiene una primera entrega hecha y se completa al incorporar la seguridad y la búsqueda. El resto de las tareas de la isla se agrega cuando sus decisiones estén justificadas. La numeración es la del backlog completo, por eso el 5 (seguridad base) todavía no aparece.
 
 Formato de cada issue: Componente `atlas`, descripción, criterios, referencias y dependencias (igual que `isla-0-itaca.md`). Las decisiones viven en este repo; los issues solo describen la tarea.
 
@@ -129,3 +129,14 @@ Consumir `CatalogUpdated` del topic de la cátedra como disparador del mismo cas
 Estado: hecho (issue #21 y PR #22 de `atlas-catalogo`, mergeado a `dev` el 2026-10-12). Detalle de las decisiones en `implementacion/atlas-catalogo.md` y verificación en `evidencias/isla-1-consumidor-kafka.md`.
 Referencias: `catedra/INTEGRATION_REFERENCE-v2.md` (15 y 16); ADR 0002 (D8) y 0003; enunciado 6.2 y 8.
 Depende de: 10 (hecho). Bloquea: evidencias (14).
+
+### 13. [atlas] Documentación de atlas-catalogo
+README ejecutable y documentación de lo propio del servicio: modelo de datos, estrategia de sincronización completa e incremental, idempotencia y recuperación, decisiones de seguridad e instrucciones para correr las pruebas.
+- [x] README con requisitos, configuración y pasos reproducibles desde cero (verificado en un clon limpio).
+- [x] Estrategia de sync, idempotencia y recuperación documentadas en `alejandria-docs`.
+- [x] Decisiones y limitaciones de seguridad documentadas (lo que existe y lo que falta).
+- [x] La documentación coincide con lo implementado hoy.
+- [ ] Se revisa y se actualiza al implementar la seguridad base (5) y la búsqueda (11).
+Estado: primera entrega hecha, a la espera de PR; queda abierto hasta incorporar 5 y 11. Detalle en `implementacion/atlas-catalogo.md`; verificación en `evidencias/isla-1-readme-desde-cero.md`.
+Referencias: enunciado 12; `arquitectura/sincronizacion-atlas-catalogo.md` y `arquitectura/seguridad-atlas-catalogo.md`.
+Depende de: 10 (hecho) y 11 y 5 (por hacer, para la entrega final). Bloquea: evidencias (14).

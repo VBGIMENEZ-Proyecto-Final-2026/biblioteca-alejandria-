@@ -17,6 +17,7 @@ Este documento registra cómo se fue construyendo el código, en el orden en que
 | 2026-10-12 | #17 · PR #18 | Cliente Redis de la cátedra: metadata, cambios y entidades; verificado contra la cátedra real | Cerrado |
 | 2026-10-12 | #19 · PR #20 | Sincronización incremental: planificador, aplicación de cambios por versión, arranque y verificación periódica | Cerrado |
 | 2026-10-12 | #21 · PR #22 | Consumidor de Kafka del aviso `CatalogUpdated` como disparador de la sincronización | Cerrado |
+| 2026-10-12 | Ítem 13 | Documentación: README ejecutable desde cero, estrategia de sincronización y seguridad | En curso (primera entrega) |
 
 Tests automatizados tras cada paso: 5 (esqueleto) → 19 (persistencia) → 40 (cliente REST) → 58 (sincronización completa) → 86 (cliente Redis) → 133 (sincronización incremental) → 161 (consumidor de Kafka).
 
@@ -299,7 +300,24 @@ Tests automatizados tras cada paso: 5 (esqueleto) → 19 (persistencia) → 40 (
 | Issue #21 | Test adicional de un mensaje corrupto como único mensaje | Los *offsets* acumulativos ocultaban la omisión de la confirmación |
 | ADR 0003 | Sin cambios: el consumidor es un disparador más, ack manual tras persistir y mensajes corruptos descartados | |
 
+## Ítem 13 · Documentación (primera entrega)
+
+**Qué quedó:** un README reorganizado y verificado desde cero ([evidencia](../evidencias/isla-1-readme-desde-cero.md)), la [estrategia de sincronización](../arquitectura/sincronizacion-atlas-catalogo.md) (planificador, transacciones, idempotencia, matriz de fallas y recuperación, estado y limitaciones) y el documento de [seguridad](../arquitectura/seguridad-atlas-catalogo.md) (lo que existe, lo que falta y las limitaciones). Es una primera entrega: se vuelve a revisar al implementar la seguridad base (5) y la búsqueda (11), que todavía no existen.
+
+### Decisiones tomadas al documentar
+
+**El detalle de la sincronización vive en un solo lugar (`alejandria-docs`) y el README lo resume y enlaza.**
+- *Alternativa:* dejar toda la explicación en el README, como estaba (la tabla del planificador, las transacciones y la matriz de fallas repetidas ahí).
+- *Por qué:* dos copias del mismo texto se desactualizan por separado, y el criterio del ítem exige que la documentación coincida con lo implementado. El README conserva lo que hace falta para ejecutar (requisitos, pasos, variables, tests) y un resumen de cinco líneas.
+- *Costo:* para leer la estrategia completa hay que seguir un enlace.
+
+**Cada afirmación del documento de sincronización cita la prueba que la respalda** (idempotencia y fallas), y lo que no tiene prueba se dice: por ejemplo, el corte del proceso a mitad de una corrida es consecuencia de la transacción y no hay un test con un corte real, y el candado entre varias instancias es por diseño y las pruebas lo ejercitan con dos hilos de una instancia.
+
+**El documento de seguridad dice qué falta en vez de describir lo planeado como hecho.** Hoy atlas no tiene endpoints de negocio, así que no hay JWT que validar; el documento lista los controles que sí existen (con su prueba), lo que debe agregar el ítem 5 y las limitaciones asumidas (sin TLS ni autenticación de Kafka, sin integración continua, logs con datos de la integración).
+
+**El README se verificó siguiendo sus propios pasos en un clon limpio**, no solo releyéndolo. Eso encontró una imprecisión (la salida de `curl`) y confirmó con datos reales que el token y las contraseñas no llegan al log.
+
 ## Pendiente
 
-- Seguridad base, búsqueda, estado de la sincronización, documentación y evidencias.
+- Seguridad base, búsqueda y estado de la sincronización; después, actualizar la documentación (ítem 13) y juntar las evidencias (ítem 14).
 - Consultas al docente que condicionan lo que sigue: 2 (alcance de "disponibilidad"), 3 (hexagonal liviana) y 10 (`oldest-available-version`); y D12 (RS256) para la seguridad base.
