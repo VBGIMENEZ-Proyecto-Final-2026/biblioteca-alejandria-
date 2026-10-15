@@ -1,6 +1,6 @@
 # Implementación de atlas-catalogo · evolución
 
-**Componente:** atlas-catalogo · **Isla:** 1 · Eolia · **Actualizado:** 2026-10-12
+**Componente:** atlas-catalogo · **Isla:** 1 · Eolia · **Actualizado:** 2026-10-14
 
 Este documento registra cómo se fue construyendo el código, en el orden en que se hizo, y qué se decidió o se cambió respecto del diseño original (ADR [0002](../arquitectura/adr/0002-stack.md) y [0003](../arquitectura/adr/0003-arquitectura.md), [modelo de datos](../modelo-datos/atlas-catalogo.md)). Las decisiones de diseño siguen viviendo en los ADR; acá van las que aparecieron **al implementar**, con su porqué, el costo aceptado y cuándo conviene revisarlas. Se agrega una sección por cada issue de código que se cierra.
 
@@ -18,6 +18,7 @@ Este documento registra cómo se fue construyendo el código, en el orden en que
 | 2026-10-12 | #19 · PR #20 | Sincronización incremental: planificador, aplicación de cambios por versión, arranque y verificación periódica | Cerrado |
 | 2026-10-12 | #21 · PR #22 | Consumidor de Kafka del aviso `CatalogUpdated` como disparador de la sincronización | Cerrado |
 | 2026-10-12 | Ítem 13 | Documentación: README ejecutable desde cero, estrategia de sincronización y seguridad | En curso (primera entrega) |
+| 2026-10-14 | Sin issue | Visor de la base (DBeaver) y resumen de la implementación contrastado con el código; sin cambios de código | Hecho |
 
 Tests automatizados tras cada paso: 5 (esqueleto) → 19 (persistencia) → 40 (cliente REST) → 58 (sincronización completa) → 86 (cliente Redis) → 133 (sincronización incremental) → 161 (consumidor de Kafka).
 
@@ -316,6 +317,29 @@ Tests automatizados tras cada paso: 5 (esqueleto) → 19 (persistencia) → 40 (
 **El documento de seguridad dice qué falta en vez de describir lo planeado como hecho.** Hoy atlas no tiene endpoints de negocio, así que no hay JWT que validar; el documento lista los controles que sí existen (con su prueba), lo que debe agregar el ítem 5 y las limitaciones asumidas (sin TLS ni autenticación de Kafka, sin integración continua, logs con datos de la integración).
 
 **El README se verificó siguiendo sus propios pasos en un clon limpio**, no solo releyéndolo. Eso encontró una imprecisión (la salida de `curl`) y confirmó con datos reales que el token y las contraseñas no llegan al log.
+
+## 2026-10-14 · Visor de la base y resumen de la implementación
+
+**Qué se hizo:** no hubo cambios de código. Se incorporó un visor para mirar la base de atlas y se armó un resumen de la implementación que se contrastó contra el código.
+
+**Visor de la base.** DBeaver Community, instalado en la máquina de desarrollo. Se conecta a la PostgreSQL local del `compose.yaml` (contenedor `atlas-db`), que escucha solo en `127.0.0.1`. Los datos de conexión salen del `.env` (valores de ejemplo en `.env.example`: host `localhost`, puerto `5433`, base `atlas`, usuario `atlas`); la contraseña no se documenta. Sirve para ver las tablas del catálogo (`professional_category`, `professional`, `weekly_schedule`) y el estado de la sincronización (`sync_state`: versión local, resultado de la última corrida, código del último error), por ejemplo después de un snapshot o de una verificación sin cambios.
+
+**Resumen de la implementación.** Una guía interactiva de una sola página: mapa de capas, archivos con los fragmentos clave, recorridos paso a paso (arranque, aviso de versión nueva, escalada a snapshot, caída de Redis o de la cátedra, mensajes de Kafka raros o repetidos), simulador del planificador y respuestas armadas para las preguntas que puede hacer el docente. Es un archivo local (no se sube a este repositorio).
+
+**Cómo se contrastó con el código** (rama `dev`; `src/` es idéntico al de `feature/documentacion`):
+- Los fragmentos de código, sus números de línea y la cantidad de líneas de los 58 archivos que lista coinciden con los archivos reales (comparación por script).
+- Las referencias `archivo:línea` de los cinco recorridos y de las preguntas caen en la línea que describen, y las seis filas del simulador reproducen `SyncPlanner.plan`.
+- Las afirmaciones sueltas (intervalo de 60 s, 12 pruebas del planificador, 7 reglas de ArchUnit, lotes de 500 en Redis, 3 intentos de Kafka, único endpoint `/actuator/health`) se comprobaron en el código.
+- La suite completa se corrió con Podman: **161 tests, 0 fallos, 0 errores, 0 omitidos**. La cifra del paso anterior queda confirmada.
+
+### Decisiones tomadas
+
+**La guía queda en un solo archivo local.**
+- *Alternativa:* conservar también la copia anterior o publicar la guía en este repositorio.
+- *Por qué:* dos copias casi iguales se desfasan, y la guía depende de números de línea de un momento del código; publicarla obligaría a mantenerla en cada cambio.
+- *Costo:* los números de línea envejecen con cualquier commit que toque `src/`. Conviene regenerarla al cerrar el próximo ítem de código.
+
+**Las diferencias entre la guía y el código se dicen en la guía.** Dos son diferencias entre el ADR 0003 y el código (el mapa de arriba muestra los nombres y paquetes reales): el caso de uso se llama `ApplyIncremental` y no `ApplyChanges`, y el planificador vive en `application.sync.plan` y no en `domain`. Detalle: en el código existe `domain/SyncStatus`, pero es el enum del estado (`IDLE`/`ERROR`), no el caso de uso de estado del ADR, que corresponde al ítem 12.
 
 ## Pendiente
 
