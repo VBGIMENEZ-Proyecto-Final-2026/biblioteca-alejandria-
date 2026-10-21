@@ -351,7 +351,7 @@ Tests automatizados tras cada paso: 5 (esqueleto) → 19 (persistencia) → 40 (
 |---|---|---|---|
 | Regla de sincronización conservadora (`local < oldest` → snapshot) | 10 | **Ya implementada** en #19 (`SyncPlanner`, filas 1 a 6 del ADR 0003, con una prueba por fila y por borde) | Solo la documentación: la fila 5 pasa de "pendiente" a "cerrada localmente" |
 | Flyway dueño del esquema, Hibernate solo valida | 4 | **Ya implementada** en #11 (`V1__esquema_catalogo.sql`, `ddl-auto=validate`, pruebas con PostgreSQL real) | Solo la documentación (ADR 0002, D6) |
-| Kafka con `security.protocol` por configuración (default `PLAINTEXT`, perfil SASL opcional) | 11 | **Implementada** el 2026-10-21 en `feature/kafka-seguridad-configurable` (commit local `0710c75`, sin push ni PR) | Ver la sección siguiente |
+| Kafka con `security.protocol` por configuración (default `PLAINTEXT`, perfil SASL opcional) | 11 | **Implementada** el 2026-10-21 en `feature/kafka-seguridad-configurable` (commit local `0710c75`, sin push ni PR) | Ver "Kafka con seguridad configurable", más abajo |
 | Disponibilidad básica detrás de una interfaz | 2 | **Sin implementar** (la búsqueda tampoco existe) | Pendiente; ver la diferencia con la decisión F |
 
 ### Cómo se contrastó cada una
