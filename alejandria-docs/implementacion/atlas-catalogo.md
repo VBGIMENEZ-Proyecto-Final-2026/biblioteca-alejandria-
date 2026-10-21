@@ -20,6 +20,7 @@ Este documento registra cómo se fue construyendo el código, en el orden en que
 | 2026-10-12 | Ítem 13 | Documentación: README ejecutable desde cero, estrategia de sincronización y seguridad | En curso (primera entrega) |
 | 2026-10-14 | Sin issue | Visor de la base (DBeaver) y resumen de la implementación contrastado con el código; sin cambios de código | Hecho |
 | 2026-10-21 | Sin issue | Decisiones locales del grupo 1 (regla de sincronización, Flyway, Kafka configurable, disponibilidad) contrastadas con el código; sin cambios de código | Hecho |
+| 2026-10-21 | Grupo 1, issue 2 | Seguridad de Kafka configurable: `PLAINTEXT` por defecto y perfil `kafka-sasl` con `SASL_SSL` | Implementado en local (sin push) |
 
 Tests automatizados tras cada paso: 5 (esqueleto) → 19 (persistencia) → 40 (cliente REST) → 58 (sincronización completa) → 86 (cliente Redis) → 133 (sincronización incremental) → 161 (consumidor de Kafka).
 
@@ -350,7 +351,7 @@ Tests automatizados tras cada paso: 5 (esqueleto) → 19 (persistencia) → 40 (
 |---|---|---|---|
 | Regla de sincronización conservadora (`local < oldest` → snapshot) | 10 | **Ya implementada** en #19 (`SyncPlanner`, filas 1 a 6 del ADR 0003, con una prueba por fila y por borde) | Solo la documentación: la fila 5 pasa de "pendiente" a "cerrada localmente" |
 | Flyway dueño del esquema, Hibernate solo valida | 4 | **Ya implementada** en #11 (`V1__esquema_catalogo.sql`, `ddl-auto=validate`, pruebas con PostgreSQL real) | Solo la documentación (ADR 0002, D6) |
-| Kafka con `security.protocol` por configuración (default `PLAINTEXT`, perfil SASL opcional) | 11 | **Sin implementar** | Pendiente; ver más abajo cómo se adapta |
+| Kafka con `security.protocol` por configuración (default `PLAINTEXT`, perfil SASL opcional) | 11 | **Implementada** el 2026-10-21 en `feature/kafka-seguridad-configurable` (commit local `0710c75`, sin push ni PR) | Ver la sección siguiente |
 | Disponibilidad básica detrás de una interfaz | 2 | **Sin implementar** (la búsqueda tampoco existe) | Pendiente; ver la diferencia con la decisión F |
 
 ### Cómo se contrastó cada una
@@ -364,12 +365,44 @@ Tests automatizados tras cada paso: 5 (esqueleto) → 19 (persistencia) → 40 (
 
 ### Lo que sigue pendiente de estas decisiones
 
-**Kafka configurable (consulta 11).** Hay que adaptar el boceto: la aplicación no usa `spring.kafka.*` (la autoconfiguración de Kafka está excluida a propósito, ver #21), así que el protocolo y la configuración SASL irán en `catedra.kafka.*` y se pasarán al cliente en `CatedraKafkaConfig`. Se mantiene lo pedido: por defecto `PLAINTEXT`, un perfil `kafka-sasl` que activa `SASL_SSL` con `sasl.jaas.config` tomado de una variable de entorno, variables en `.env.example` y ningún secreto en el repositorio ni en los logs (la configuración con la contraseña no puede aparecer en el `toString` de las propiedades). Sin soporte de mTLS ni de otros mecanismos hasta que la cátedra lo pida.
-
 **Disponibilidad (consulta 2).** Hay una diferencia a resolver antes de implementarla. El texto del grupo 1 define "disponible" como tener al menos un horario semanal habilitado (y, si se informa el día, que sea de ese día), e independiente del filtro de habilitado del profesional. La decisión F del [modelo de datos](../modelo-datos/atlas-catalogo.md) exige además profesional **y** categoría habilitados. Hasta resolverlo, el modelo de datos queda como está. La consulta (un puerto de consulta más una implementación con los datos locales) no cambia en ninguno de los dos casos.
+
+## Kafka con seguridad configurable (grupo 1, issue 2)
+
+**Qué se hizo.** El consumidor de Kafka puede autenticarse sin tocar código si la cátedra lo exige. Por defecto sigue igual: `PLAINTEXT`, sin ninguna variable extra. El perfil `kafka-sasl` (archivo `application-kafka-sasl.yaml`) activa `SASL_SSL` con mecanismo `PLAIN`, y el usuario y la contraseña van únicamente en `CATEDRA_KAFKA_SASL_JAAS_CONFIG`. Rama `feature/kafka-seguridad-configurable` (commit local `0710c75`, **sin push, sin issue y sin PR**: queda en local por decisión del 2026-10-14).
+
+**Qué cambia en el código.**
+- `CatedraKafkaProperties` suma `securityProtocol` (por defecto `PLAINTEXT`) y `saslJaasConfig`, con validación que impide el arranque con un mensaje que dice cuál es el problema: protocolo distinto de `PLAINTEXT` o `SASL_SSL`, `SASL_SSL` sin JAAS, y JAAS con `PLAINTEXT`. El JAAS no aparece en `toString`.
+- `CatedraKafkaConfig` arma la configuración del cliente en un método aparte (`consumerConfig`) y le agrega el protocolo y, con `SASL_SSL`, el mecanismo y el JAAS.
+- `.env.example` y el README documentan las variables y el perfil.
+
+**Pruebas (11 nuevas, 172 en total).** Sin variables de seguridad la conexión es `PLAINTEXT` y el cliente no recibe configuración SASL; con `SASL_SSL` recibe protocolo, mecanismo y JAAS; el protocolo se normaliza a mayúsculas; los tres arranques inválidos dicen qué variable falla; el JAAS no está en el `toString` ni en el mensaje de un fallo; el archivo real del perfil activa `SASL_SSL` con el JAAS de la variable y, sin el JAAS, no arranca; y el cliente de Kafka, al construirse con `SASL_SSL`, registra `sasl.jaas.config = [hidden]` y no la contraseña. Dos mutaciones manuales (el perfil que no cambia el protocolo y el JAAS que no llega al cliente) hicieron fallar los tests esperados.
+
+### Decisiones tomadas
+
+**Las propiedades son `catedra.kafka.*`, no `spring.kafka.*`.**
+- *Alternativa:* seguir el boceto del grupo 1, con `spring.kafka.security.protocol` y `spring.kafka.properties.sasl.*`.
+- *Por qué:* el consumidor se arma a mano y la autoconfiguración de Kafka está excluida a propósito (#21), así que esas propiedades no tendrían efecto. Las variables llevan el prefijo `CATEDRA_KAFKA_*` como el resto de la integración, en lugar de `KAFKA_*`.
+- *Costo:* se diverge del nombre estándar de Spring; quien conozca `spring.kafka.*` no lo encontrará.
+- *Revisar:* si se reemplazara el armado manual por la autoconfiguración.
+
+**Solo `PLAINTEXT` y `SASL_SSL`, mecanismo fijo `PLAIN`.**
+- *Alternativa:* aceptar cualquier protocolo y mecanismo de Kafka (`SSL`, `SASL_PLAINTEXT`, `SCRAM`, mTLS).
+- *Por qué:* es lo que pidió el grupo 1 y evita configuraciones que nadie probó; una opción más segura que el texto plano sin cifrar (`SASL_PLAINTEXT`) no se ofrece por error.
+- *Costo:* si la cátedra pidiera otro mecanismo, hay que cambiar código y no solo configuración.
+- *Revisar:* cuando el docente responda la consulta 11.
+
+**Una configuración incoherente impide el arranque.**
+- *Alternativa:* ignorar el JAAS si el protocolo es `PLAINTEXT`, o usar `SASL_SSL` sin JAAS y dejar que falle al conectarse.
+- *Por qué:* credenciales definidas pero no usadas harían creer que la conexión está autenticada, y un `SASL_SSL` sin JAAS falla recién al conectar, con un mensaje poco claro y ocultado por el reintento en segundo plano del consumidor.
+- *Costo:* si se deja el JAAS en el `.env` y se quita el perfil, la aplicación no arranca hasta borrar la variable.
+
+### Límites de lo probado
+
+No se probó contra un Kafka con autenticación, ni contra el Kafka real de la cátedra: hoy no exige credenciales y no hay un servidor con SASL a mano. Lo verificado es la configuración que recibe el cliente y que el secreto no se registra. Un `SASL_SSL` real también requiere que el servidor tenga un certificado que el cliente confíe (el almacén de confianza de la JVM); si la cátedra usara uno propio, habría que agregar la configuración del *truststore*, que no se incluyó. Tampoco se repitió la verificación manual contra la cátedra real, porque la ruta por defecto (`PLAINTEXT`) no cambió y la cubren los tests con un Kafka real en contenedor.
 
 ## Pendiente
 
 - Seguridad base, búsqueda y estado de la sincronización; después, actualizar la documentación (ítem 13) y juntar las evidencias (ítem 14).
 - Consultas al docente que condicionan lo que sigue: 2 (alcance de "disponibilidad"), 3 (hexagonal liviana) y 10 (`oldest-available-version`, cerrada localmente el 2026-10-21); y D12 (RS256) para la seguridad base.
-- Del grupo 1: Kafka configurable (consulta 11) y filtro de disponibilidad (consulta 2), una vez resuelta la diferencia con la decisión F.
+- Del grupo 1: filtro de disponibilidad (consulta 2), una vez resuelta la diferencia con la decisión F. Kafka configurable está implementado en local; falta crear el issue, el push y el PR cuando se pida.

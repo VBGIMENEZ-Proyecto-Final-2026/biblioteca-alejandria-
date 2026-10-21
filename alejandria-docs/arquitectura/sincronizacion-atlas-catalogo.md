@@ -202,4 +202,4 @@ Todos son variables de entorno con un valor por defecto, salvo las obligatorias.
 - **Conexión de base ocupada** durante las lecturas a REST (peor caso unos 91 s) y a Redis dentro de la transacción de cada versión.
 - **El estado no se expone por API todavía:** se consulta con SQL hasta que se implemente el ítem 12. Tampoco hay `RUNNING`.
 - **Credenciales leídas al arrancar:** rotar un token o una contraseña exige reiniciar el servicio.
-- **Kafka sin autenticación:** la cátedra no la documenta y la conexión real funcionó sin credenciales (consulta 11 al docente).
+- **Kafka sin autenticación por defecto:** la cátedra no la documenta y la conexión real funcionó sin credenciales (consulta 11 al docente). Si la exigiera, el perfil `kafka-sasl` activa `SASL_SSL` sin tocar código (ver [seguridad](seguridad-atlas-catalogo.md)).
