@@ -1,6 +1,6 @@
 # Implementación de atlas-catalogo · evolución
 
-**Componente:** atlas-catalogo · **Isla:** 1 · Eolia · **Actualizado:** 2026-10-14
+**Componente:** atlas-catalogo · **Isla:** 1 · Eolia · **Actualizado:** 2026-10-21
 
 Este documento registra cómo se fue construyendo el código, en el orden en que se hizo, y qué se decidió o se cambió respecto del diseño original (ADR [0002](../arquitectura/adr/0002-stack.md) y [0003](../arquitectura/adr/0003-arquitectura.md), [modelo de datos](../modelo-datos/atlas-catalogo.md)). Las decisiones de diseño siguen viviendo en los ADR; acá van las que aparecieron **al implementar**, con su porqué, el costo aceptado y cuándo conviene revisarlas. Se agrega una sección por cada issue de código que se cierra.
 
@@ -19,6 +19,7 @@ Este documento registra cómo se fue construyendo el código, en el orden en que
 | 2026-10-12 | #21 · PR #22 | Consumidor de Kafka del aviso `CatalogUpdated` como disparador de la sincronización | Cerrado |
 | 2026-10-12 | Ítem 13 | Documentación: README ejecutable desde cero, estrategia de sincronización y seguridad | En curso (primera entrega) |
 | 2026-10-14 | Sin issue | Visor de la base (DBeaver) y resumen de la implementación contrastado con el código; sin cambios de código | Hecho |
+| 2026-10-21 | Sin issue | Decisiones locales del grupo 1 (regla de sincronización, Flyway, Kafka configurable, disponibilidad) contrastadas con el código; sin cambios de código | Hecho |
 
 Tests automatizados tras cada paso: 5 (esqueleto) → 19 (persistencia) → 40 (cliente REST) → 58 (sincronización completa) → 86 (cliente Redis) → 133 (sincronización incremental) → 161 (consumidor de Kafka).
 
@@ -341,7 +342,34 @@ Tests automatizados tras cada paso: 5 (esqueleto) → 19 (persistencia) → 40 (
 
 **Las diferencias entre la guía y el código se dicen en la guía.** Dos son diferencias entre el ADR 0003 y el código (el mapa de arriba muestra los nombres y paquetes reales): el caso de uso se llama `ApplyIncremental` y no `ApplyChanges`, y el planificador vive en `application.sync.plan` y no en `domain`. Detalle: en el código existe `domain/SyncStatus`, pero es el enum del estado (`IDLE`/`ERROR`), no el caso de uso de estado del ADR, que corresponde al ítem 12.
 
+## 2026-10-21 · Decisiones locales del grupo 1
+
+**Qué se hizo:** no hubo cambios de código. Se contrastaron cuatro decisiones que se cerraron sin esperar al docente con lo que ya estaba implementado, y se documentó el resultado. Cada una queda como "resuelta localmente, a confirmar con el docente".
+
+| Decisión | Consulta | Estado en el código | Qué cambia |
+|---|---|---|---|
+| Regla de sincronización conservadora (`local < oldest` → snapshot) | 10 | **Ya implementada** en #19 (`SyncPlanner`, filas 1 a 6 del ADR 0003, con una prueba por fila y por borde) | Solo la documentación: la fila 5 pasa de "pendiente" a "cerrada localmente" |
+| Flyway dueño del esquema, Hibernate solo valida | 4 | **Ya implementada** en #11 (`V1__esquema_catalogo.sql`, `ddl-auto=validate`, pruebas con PostgreSQL real) | Solo la documentación (ADR 0002, D6) |
+| Kafka con `security.protocol` por configuración (default `PLAINTEXT`, perfil SASL opcional) | 11 | **Sin implementar** | Pendiente; ver más abajo cómo se adapta |
+| Disponibilidad básica detrás de una interfaz | 2 | **Sin implementar** (la búsqueda tampoco existe) | Pendiente; ver la diferencia con la decisión F |
+
+### Cómo se contrastó cada una
+
+**Regla de sincronización.** La función pura de la decisión del grupo 1 es la que ya existe, con dos diferencias de forma que no cambian el comportamiento. Vive en `application.sync.plan` y no en `domain` (no depende de Spring ni de JPA, que era lo que importaba). Y devuelve un `SyncPlan` (`Noop`, `Incremental(desde, hasta)` o `Snapshot(motivo)`) en lugar de una enumeración de tres valores: el motivo se guarda en `sync_state.last_snapshot_reason` y el rango lo necesita la aplicación incremental. Además agrega la fila "metadata ausente o incoherente → `Snapshot(NO_VERIFICABLE)`", que la decisión del grupo 1 no contemplaba. El fallback por `changes:{v}` ausente a mitad del rango ya está en #19, no en el planificador.
+
+**Flyway.** Coincide en lo esencial (módulo de Postgres, `validate`, pruebas contra un Postgres real y no H2). Hay tres diferencias con el texto del grupo 1 que se **dejaron como están**:
+- *Instancias de PostgreSQL.* El grupo 1 propone una sola instancia con dos bases (`atlas_db` y `cronos_db`) y un script de inicialización. El ADR 0002 (D5) ya había decidido **una instancia propia por repositorio**, y así están hoy los `compose.yaml` de los dos servicios (atlas en `127.0.0.1:5433`, base `atlas`). El script de inicialización no se adopta.
+- *Migraciones.* El grupo 1 listaba `V1` (catálogo), `V2` (`sync_state`) y `V3` (`processed_events`). Hay una sola `V1` con las tres tablas del catálogo y `sync_state`, y `processed_events` no existe: la decisión D del modelo es no guardar los `eventId` (la idempotencia sale de los *upserts* y de la versión). Una migración ya aplicada no se edita, así que no se parte.
+- *Permisos.* "El usuario de atlas solo tiene permisos sobre su base" se cumple por construcción: cada instancia tiene un único usuario y una única base.
+
+### Lo que sigue pendiente de estas decisiones
+
+**Kafka configurable (consulta 11).** Hay que adaptar el boceto: la aplicación no usa `spring.kafka.*` (la autoconfiguración de Kafka está excluida a propósito, ver #21), así que el protocolo y la configuración SASL irán en `catedra.kafka.*` y se pasarán al cliente en `CatedraKafkaConfig`. Se mantiene lo pedido: por defecto `PLAINTEXT`, un perfil `kafka-sasl` que activa `SASL_SSL` con `sasl.jaas.config` tomado de una variable de entorno, variables en `.env.example` y ningún secreto en el repositorio ni en los logs (la configuración con la contraseña no puede aparecer en el `toString` de las propiedades). Sin soporte de mTLS ni de otros mecanismos hasta que la cátedra lo pida.
+
+**Disponibilidad (consulta 2).** Hay una diferencia a resolver antes de implementarla. El texto del grupo 1 define "disponible" como tener al menos un horario semanal habilitado (y, si se informa el día, que sea de ese día), e independiente del filtro de habilitado del profesional. La decisión F del [modelo de datos](../modelo-datos/atlas-catalogo.md) exige además profesional **y** categoría habilitados. Hasta resolverlo, el modelo de datos queda como está. La consulta (un puerto de consulta más una implementación con los datos locales) no cambia en ninguno de los dos casos.
+
 ## Pendiente
 
 - Seguridad base, búsqueda y estado de la sincronización; después, actualizar la documentación (ítem 13) y juntar las evidencias (ítem 14).
-- Consultas al docente que condicionan lo que sigue: 2 (alcance de "disponibilidad"), 3 (hexagonal liviana) y 10 (`oldest-available-version`); y D12 (RS256) para la seguridad base.
+- Consultas al docente que condicionan lo que sigue: 2 (alcance de "disponibilidad"), 3 (hexagonal liviana) y 10 (`oldest-available-version`, cerrada localmente el 2026-10-21); y D12 (RS256) para la seguridad base.
+- Del grupo 1: Kafka configurable (consulta 11) y filtro de disponibilidad (consulta 2), una vez resuelta la diferencia con la decisión F.

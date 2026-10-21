@@ -1,6 +1,6 @@
 # ADR 0003 · Arquitectura interna de atlas-catalogo
 
-**Estado:** aceptado, con los compromisos (consulta 3) y la fila 5 del planificador (consulta 10) pendientes de confirmar con el docente · **Componente:** atlas-catalogo · **Contexto:** Isla 1, issue #6
+**Estado:** aceptado, con los compromisos (consulta 3) pendientes de confirmar con el docente; la fila 5 del planificador (consulta 10) está cerrada localmente (2026-10-21) y se confirma con el docente · **Componente:** atlas-catalogo · **Contexto:** Isla 1, issue #6
 
 ## Contexto
 
@@ -134,6 +134,8 @@ Entrada: versión local (o ninguna) y metadata remota (`current`, `oldest`). Sal
 | 6 | En otro caso (`oldest <= local < current`) | `Incremental(local+1, current)` |
 
 La fila 5 sigue la referencia 14.2 y el ejemplo 18.2 (local 3, `oldest` 4 → snapshot). Se mantiene la lectura literal (la más conservadora) hasta resolver la consulta 10: si `oldest` significa la primera versión con `changes` disponible o la versión base desde la cual se puede continuar.
+
+**Cerrada localmente el 2026-10-21 (a confirmar con el docente):** se mantiene la lectura literal. Es la regla conservadora: el peor caso es un snapshot de más (con este catálogo, barato), nunca una copia local corrupta. Si el docente responde que `oldest` es la versión base desde la que se puede continuar, cambia solo esta fila y sus pruebas de borde.
 
 ### Aplicación incremental
 

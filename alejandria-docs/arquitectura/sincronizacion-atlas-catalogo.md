@@ -52,7 +52,7 @@ Función pura (sin Spring, Redis, REST ni base de datos): recibe la versión loc
 | 5 | `local < oldest` | `Snapshot(FUERA_DE_VENTANA)` |
 | 6 | En otro caso (`oldest <= local < current`) | `Incremental(local + 1, current)` |
 
-La fila 5 sigue la lectura literal de la referencia de integración (14.2 y 18.2). Si el docente responde de otra manera la consulta 10, solo cambia esa fila y sus pruebas de borde. Con la base vacía no se lee Redis: la primera carga solo necesita REST.
+La fila 5 sigue la lectura literal de la referencia de integración (14.2 y 18.2). Decisión cerrada localmente el 2026-10-21 (a confirmar con el docente, consulta 10): se mantiene esa lectura, porque el peor caso es un snapshot de más y nunca una copia corrupta. Si el docente responde de otra manera, solo cambia esa fila y sus pruebas de borde. Con la base vacía no se lee Redis: la primera carga solo necesita REST.
 
 ## Sincronización completa (snapshot)
 
@@ -195,7 +195,7 @@ Todos son variables de entorno con un valor por defecto, salvo las obligatorias.
 ## Limitaciones conocidas
 
 - **La cátedra real solo publica la versión 1.** El snapshot, la metadata y la lectura de `changes:1` se verificaron contra la cátedra real ([evidencias](../evidencias/)); la **aplicación de una versión incremental, las bajas y las escaladas** están cubiertas por pruebas automatizadas con Redis real en un contenedor, no por una versión real de la cátedra. Hay que repetir la verificación cuando se publique una versión 2.
-- **Fila 5 del planificador** (`local < oldest`): lectura conservadora hasta la consulta 10. Puede pedir un snapshot que un incremental habría evitado; con este catálogo (unos 14 KB) es barato.
+- **Fila 5 del planificador** (`local < oldest`): lectura conservadora, cerrada localmente el 2026-10-21 y a confirmar con el docente (consulta 10). Puede pedir un snapshot que un incremental habría evitado; con este catálogo (unos 14 KB) es barato.
 - **Demora de un aviso fallido:** si un aviso de Kafka no se pudo procesar y se descartó, la copia se pone al día en el siguiente intervalo de verificación, no al instante.
 - **Una escritura corta por verificación:** una verificación sin cambios se registra como `NOOP`, así que hay una escritura con candado por intervalo (una por minuto por defecto).
 - **Sin heurística por tamaño del salto:** si la copia quedó muchas versiones atrás, se aplican una por una hasta el tope por corrida; no se cambia a snapshot por "salto grande".

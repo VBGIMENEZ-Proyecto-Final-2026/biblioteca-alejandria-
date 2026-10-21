@@ -68,6 +68,7 @@ Restricciones del enunciado que condicionan el stack:
 ### D6 — Flyway (alternativa: Liquibase) · Decidido
 - **Pros:** SQL plano, fácil de leer y defender; menos conceptos.
 - **Contras:** si `cronos-turnos` usa JHipster, allí se usaría Liquibase (dos herramientas de migración distintas). Si resulta molesto, se reevalúa.
+- **Consulta 4 (expectativa de la cátedra sobre Flyway o Liquibase):** cerrada localmente el 2026-10-21, se mantiene Flyway; se confirma con el docente. Se aplicó en el issue #11: Flyway es el dueño del esquema (`V1__esquema_catalogo.sql`), Hibernate solo valida (`ddl-auto=validate`) y una migración ya aplicada no se edita (los cambios van en una versión nueva).
 
 ### D7 — Spring Data JPA (alternativas: JdbcClient/JdbcTemplate, jOOQ) · Decidido
 - **Pros:** rapidez de desarrollo; Specifications para los filtros combinables; el catálogo es chico.
