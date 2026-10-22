@@ -112,7 +112,7 @@ La regla es: **se escala cuando un snapshot arregla el problema; no se escala po
 
 ## El estado de la sincronización (`sync_state`)
 
-Una sola fila. Mientras no exista un endpoint de estado (ítem 12 del backlog), se consulta con SQL:
+Una sola fila. Se consulta por la API (`GET /api/sync/status`, ver más abajo) o directamente con SQL:
 
 ```sql
 SELECT local_version, status, last_result, last_snapshot_reason, last_sync_at,
@@ -128,6 +128,27 @@ FROM sync_state;
 | `last_snapshot_reason` | Por qué se armó o reconstruyó la copia la última vez con un snapshot (`BASE_VACIA`, `NO_VERIFICABLE`, `LOCAL_ADELANTADA`, `FUERA_DE_VENTANA` o `FALTA_VERSION`). Se conserva en las corridas siguientes. |
 | `last_sync_at` | Hora de la última corrida terminada bien (incluidas las verificaciones sin cambios). |
 | `last_error_code`, `last_error_message`, `last_error_at` | El error vigente, o `NULL` si no hay. Un éxito posterior lo limpia. |
+
+### Consulta por la API · `GET /api/sync/status`
+
+Devuelve el contenido de la fila de forma controlada. **Está apagado por defecto** (`ATLAS_SYNC_STATUS_ENDPOINT=true` lo enciende): hasta que exista la seguridad base no se expone, y apagado la ruta responde `404` como si no existiera. Cuando exista, se protege con `401` y `403` y se cambia el valor por defecto.
+
+```json
+{
+  "localVersion": 7,
+  "status": "ERROR",
+  "lastResult": "INCREMENTAL",
+  "lastSnapshotReason": "BASE_VACIA",
+  "lastSyncAt": "2026-10-21T15:30:45Z",
+  "lastError": { "code": "CATEDRA_NO_DISPONIBLE", "message": "La cátedra no respondió", "at": "2026-10-21T15:31:45Z" }
+}
+```
+
+- Los campos sin valor van como `null` (con la base vacía, `localVersion`, `lastResult` y los demás son `null`; sin error, `lastError` es `null`).
+- Lee `sync_state` **sin tomar el candado**: consultar el estado nunca espera a una corrida en curso y ve lo último confirmado. No depende de la cátedra, así que responde aunque esté caída.
+- El mensaje del error es el fijo por código (tabla de abajo). Nunca la causa técnica, hosts ni credenciales.
+- Si la base de datos no responde: `503` con `application/problem+json` y `code: STATUS_NO_DISPONIBLE`, sin `detail`.
+- `RUNNING` no se informa porque ninguna corrida lo escribe.
 
 ### Códigos de error
 
@@ -177,6 +198,24 @@ No se guarda ninguna tabla de `eventId` procesados: la comparación de versiones
 | Falla de la base de datos | La corrida falla; el error puede no poder registrarse y queda en el log | Sin cambios (la transacción no se confirmó) | La siguiente verificación |
 | Corte del proceso a mitad de una corrida | PostgreSQL revierte la transacción abierta | Como antes de la corrida | Al reiniciar, el arranque verifica. *No hay una prueba con un corte real del proceso: es consecuencia de la transacción.* |
 
+**Cada fila tiene su prueba:**
+
+| Falla | Prueba |
+|---|---|
+| La cátedra (REST) no responde | `SincronizacionCompletaTest.laCatedraCaidaDejaLaCopiaIntactaYElEstadoEnError` y `siLaCatedraFallaAlArrancarNoSeCaeYQuedaElError` |
+| Redis no responde | `SincronizacionIncrementalTest.conRedisCaidoQuedaElErrorSinSnapshotYLaSiguienteVerificacionSeRecupera` |
+| Credencial rechazada, respuesta inválida | `SincronizacionCompletaTest.cadaFallaDelPuertoTieneSuCodigo` y `SincronizacionIncrementalTest.unaCredencialRechazadaAlLeerLosCambiosDejaElErrorSinAvanzarNiEscalar` |
+| Falla a mitad de un snapshot | `SincronizacionCompletaTest.siFallaAMitadDeCaminoSeRevierteTodoYQuedaElError` |
+| Falla de aplicación inesperada (incremental) | `SincronizacionIncrementalTest.unaFallaInesperadaDeAplicacionQuedaConSuPropioCodigo` |
+| Falla a mitad de varias versiones | `SincronizacionIncrementalTest.siRedisFallaALaMitadDeVariasVersionesQuedanLasAplicadasYLaSiguienteContinua` y `lasVersionesYaAplicadasSeConservanSiElSnapshotDeEscaladaFalla` |
+| Kafka no responde | `ConsumidorKafkaInaccesibleTest.laAplicacionArrancaYElConsumidorQuedaReintentandoLaConexion` |
+| La sincronización falla al procesar un aviso | `ConsumidorKafkaTest.siLaSincronizacionFallaReintentaDeFormaAcotadaDescartaYElConsumidorSigue` |
+| Mensaje de Kafka corrupto | `ConsumidorKafkaTest.losMensajesCorruptosSeDescartanSinBloquearYElSiguienteSeProcesa` y `unMensajeCorruptoSoloTambienConfirmaSuOffset` |
+| Un éxito posterior limpia el error | `SincronizacionCompletaTest.unExitoPosteriorLimpiaElError` y `EstadoSincronizacionTest.unExitoPosteriorLimpiaElErrorInformado` |
+| **Ciclo completo con la verificación periódica real** (cátedra, Redis y falla al aplicar) | `RecuperacionSincronizacionTest`: falla, `ERROR` con el código correcto y la copia intacta, la dependencia vuelve y el estado queda `IDLE` sin intervención |
+| El estado no bloquea ni filtra secretos; el log no los trae | `EstadoSincronizacionTest.consultarElEstadoNoEsperaAUnaCorridaEnCursoYVeLoUltimoConfirmado`, `conUnErrorInformaSuCodigoYSuMensajeFijoSinTocarLaVersionNiElUltimoResultado` y `cadaFallaDejaUnaLineaConElCodigoYLaClaseDeLaCausaYNingunSecretoEnElLog` |
+| La base no responde al consultar el estado | `SyncStatusControllerTest.siLaBaseNoRespondeDevuelve503ConProblemJsonYSinDetalleInterno` |
+
 Las pruebas que cubren estas filas están en `SincronizacionCompletaTest`, `SincronizacionIncrementalTest`, `SincronizacionConRedisRealTest`, `ConsumidorKafkaTest` y `ConsumidorKafkaInaccesibleTest`, más las pruebas de los clientes (`CatedraRestSnapshotSourceTest`, `CatedraRedisChangeSourceTest`).
 
 ## Parámetros
@@ -190,6 +229,7 @@ Todos son variables de entorno con un valor por defecto, salvo las obligatorias.
 | `ATLAS_SYNC_CHECK_INTERVAL` | `60s` | Espera entre verificaciones |
 | `ATLAS_SYNC_MAX_VERSIONS_PER_RUN` | `1000` | Versiones máximas por corrida |
 | `ATLAS_SYNC_KAFKA_ENABLED` | `true` | Enciende el consumidor del aviso de Kafka |
+| `ATLAS_SYNC_STATUS_ENDPOINT` | `false` | Expone `GET /api/sync/status`; apagado responde `404` |
 | `CATEDRA_REST_*`, `CATEDRA_REDIS_*`, `CATEDRA_KAFKA_*` | ver README | Conexión, timeouts y reintentos de cada cliente |
 
 ## Limitaciones conocidas
@@ -200,6 +240,7 @@ Todos son variables de entorno con un valor por defecto, salvo las obligatorias.
 - **Una escritura corta por verificación:** una verificación sin cambios se registra como `NOOP`, así que hay una escritura con candado por intervalo (una por minuto por defecto).
 - **Sin heurística por tamaño del salto:** si la copia quedó muchas versiones atrás, se aplican una por una hasta el tope por corrida; no se cambia a snapshot por "salto grande".
 - **Conexión de base ocupada** durante las lecturas a REST (peor caso unos 91 s) y a Redis dentro de la transacción de cada versión.
-- **El estado no se expone por API todavía:** se consulta con SQL hasta que se implemente el ítem 12. Tampoco hay `RUNNING`.
+- **El endpoint de estado está apagado por defecto** hasta que exista la seguridad base (ítem 5); encendido, cualquiera que llegue al servicio ve la versión y los códigos de error. Tampoco hay `RUNNING`.
+- **Los logs de falla traen el código funcional y la clase de la causa, no su mensaje:** para ver el mensaje técnico de una falla hay que reproducirla con un depurador o subir el nivel de log del cliente correspondiente.
 - **Credenciales leídas al arrancar:** rotar un token o una contraseña exige reiniciar el servicio.
 - **Kafka sin autenticación por defecto:** la cátedra no la documenta y la conexión real funcionó sin credenciales (consulta 11 al docente). Si la exigiera, el perfil `kafka-sasl` activa `SASL_SSL` sin tocar código (ver [seguridad](seguridad-atlas-catalogo.md)).

@@ -22,6 +22,7 @@ Este documento registra cómo se fue construyendo el código, en el orden en que
 | 2026-10-21 | Sin issue | Decisiones locales del grupo 1 (regla de sincronización, Flyway, Kafka configurable, disponibilidad) contrastadas con el código; sin cambios de código | Hecho |
 | 2026-10-21 | Grupo 1, issue 2 | Seguridad de Kafka configurable: `PLAINTEXT` por defecto y perfil `kafka-sasl` con `SASL_SSL` | Implementado en local (sin push) |
 | 2026-10-21 | Grupo 1, issue 4 | Filtro de disponibilidad detrás de una interfaz, sobre la copia local | Implementado en local (sin push) |
+| 2026-10-21 | Ítem 12 | Estado de la sincronización (`GET /api/sync/status`, apagado por defecto) y pruebas de falla y recuperación | Implementado en local (sin issue ni push) |
 
 Tests automatizados tras cada paso: 5 (esqueleto) → 19 (persistencia) → 40 (cliente REST) → 58 (sincronización completa) → 86 (cliente Redis) → 133 (sincronización incremental) → 161 (consumidor de Kafka).
 
@@ -364,6 +365,42 @@ Tests automatizados tras cada paso: 5 (esqueleto) → 19 (persistencia) → 40 (
 - *Migraciones.* El grupo 1 listaba `V1` (catálogo), `V2` (`sync_state`) y `V3` (`processed_events`). Hay una sola `V1` con las tres tablas del catálogo y `sync_state`, y `processed_events` no existe: la decisión D del modelo es no guardar los `eventId` (la idempotencia sale de los *upserts* y de la versión). Una migración ya aplicada no se edita, así que no se parte.
 - *Permisos.* "El usuario de atlas solo tiene permisos sobre su base" se cumple por construcción: cada instancia tiene un único usuario y una única base.
 
+## Ítem 12 · Estado y manejo de errores de la sincronización
+
+**Qué se hizo.** Se expone el estado de la sincronización y se comprueba, con pruebas de punta a punta, que una caída de la cátedra, de Redis o de la aplicación al aplicar no corrompe la copia y que se recupera sola. Rama `feature/estado-sincronizacion` (commit local `d125797`, **sin push, sin issue y sin PR**: queda en local por decisión del 2026-10-14). El borrador del issue está en `prog2/issue-estado-sync-atlas-catalogo.md`.
+
+**Qué hay en el código.**
+- `GetSyncStatus` (en `application.sync`): lee `sync_state` en una transacción de solo lectura, **sin** `FOR UPDATE`, y devuelve un `SyncStatusView`.
+- `GET /api/sync/status` en `adapters.in.web`: `SyncStatusController` solo traduce (la regla de ArchUnit le prohíbe tocar repositorios y JPA) y `SyncStatusExceptionHandler` devuelve `503` con `problem+json` y `STATUS_NO_DISPONIBLE` si la base no responde. Ambos solo existen con `atlas.sync.status-endpoint.enabled=true`.
+- `SyncException.describe`: los logs de falla del arranque, de la verificación periódica y del consumidor de Kafka ahora traen el código funcional y la **clase** de la causa, nunca su mensaje. Antes el consumidor de Kafka registraba la clase del envoltorio del contenedor, que no decía nada.
+- Detalle del contrato, del mapa de fallas y de la prueba de cada fila: [estrategia de sincronización](../arquitectura/sincronizacion-atlas-catalogo.md).
+
+**Pruebas (17 nuevas, 178 en total).** Controlador (JSON completo, campos `null`, `503`, solo `GET`); estado contra PostgreSQL real después de cada tipo de corrida y con un error vigente; que consultar no espera a una corrida en curso (con tope de 5 s); que la respuesta y el log no traen secretos; el endpoint apagado responde `404` por defecto; una falla a mitad de varias versiones deja aplicadas las anteriores y la siguiente corrida continúa; y un ciclo de recuperación con la verificación periódica real en el que la aplicación pasa por tres fallas (Redis caído, credencial rechazada de la cátedra y un snapshot que no se puede aplicar) y se recupera sola cada vez. Cuatro mutaciones manuales (la consulta toma el candado, el log trae el mensaje de la causa, un `Noop` no limpia el error y un error pierde la versión local) hicieron fallar los tests esperados.
+
+### Decisiones tomadas
+
+**El endpoint nace apagado.**
+- *Alternativa:* esperar a la seguridad base (ítem 5) para hacer todo junto, o encenderlo sin protección.
+- *Por qué:* el documento de seguridad dice que no se agregan endpoints de negocio antes del ítem 5, y el 5 espera la reunión con el docente (D12). Apagado, la parte de falla y recuperación no se demora y el endpoint no queda abierto por descuido.
+- *Costo:* el criterio "endpoint protegido" del backlog queda **pendiente del ítem 5**. Hasta entonces, quien lo encienda expone la versión y los códigos de error.
+- *Revisar:* al implementar la seguridad base, que también cambia el valor por defecto.
+
+**La consulta no toma el candado.**
+- *Alternativa:* leer con `FOR UPDATE` para ver siempre el estado más reciente.
+- *Por qué:* con el candado, consultar el estado esperaría a una snapshot de hasta unos 91 s. Con `READ COMMITTED` se ve lo último confirmado, que es lo que importa.
+- *Costo:* durante una corrida el estado muestra la anterior, no la que está en curso.
+
+**`RUNNING` no se escribe ni se informa.** Escribirlo exigiría una transacción extra por corrida y nadie lo vería hasta el *commit*, porque la fila está tomada por el candado. Ya estaba así en la documentación; se confirma.
+
+**El mensaje del error es el fijo por código, y los logs describen la causa solo por su clase.**
+- *Alternativa:* registrar el mensaje de la excepción para facilitar el diagnóstico.
+- *Por qué:* esos mensajes vienen de la integración y pueden traer hosts, claves o cuerpos de mensajes.
+- *Costo:* para ver el mensaje técnico hay que reproducir la falla con un depurador o subir el nivel de log del cliente.
+
+### Límites de lo probado
+
+La falla "la base de datos no responde" se prueba para el endpoint (`503`) con la excepción simulada, no apagando PostgreSQL. La falla de aplicación del snapshot se prueba con un profesional de una categoría inexistente (viola una clave foránea), que es una falla de la base a efectos de la copia. No se probó contra la cátedra real, que solo publica la versión 1. No hay una prueba con un corte real del proceso (es consecuencia de la transacción, como dice la estrategia de sincronización).
+
 ## Filtro de disponibilidad (grupo 1, issue 4)
 
 **Qué se hizo.** El filtro "disponibilidad" de la búsqueda, resuelto solo con datos locales y detrás de una interfaz. Rama `feature/filtro-disponibilidad` (commit local `797bc3c`, **sin push, sin issue y sin PR**). Todavía no hay endpoint ni búsqueda (backlog 11): este paso deja lista la pieza que la búsqueda va a usar.
@@ -433,4 +470,5 @@ No se probó contra un Kafka con autenticación, ni contra el Kafka real de la c
 
 - Seguridad base, búsqueda y estado de la sincronización; después, actualizar la documentación (ítem 13) y juntar las evidencias (ítem 14).
 - Consultas al docente que condicionan lo que sigue: 2 (alcance de "disponibilidad"), 3 (hexagonal liviana) y 10 (`oldest-available-version`, cerrada localmente el 2026-10-21); y D12 (RS256) para la seguridad base.
+- Del ítem 12: falta crear el issue, el push y el PR cuando se pidan, y proteger el endpoint con la seguridad base (ítem 5).
 - Del grupo 1: Kafka configurable (issue 2) y filtro de disponibilidad (issue 4) están implementados en local, en dos ramas distintas desde `dev`; falta crear los issues, el push y los PR cuando se pidan. `feature/documentacion` tiene un conflicto en el README con la rama de Kafka (se resuelve tomando el README de documentación y sumándole las dos variables, el párrafo de autenticación y `PerfilKafkaSaslTest`).
