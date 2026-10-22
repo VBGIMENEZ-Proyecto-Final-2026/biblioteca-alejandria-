@@ -1,6 +1,6 @@
 # Modelo de datos de atlas-catalogo
 
-**Estado:** aceptado, con la consulta 2 al docente pendiente · **Componente:** atlas-catalogo · **Contexto:** Isla 1, issue #7 · **Base:** PostgreSQL, migraciones con Flyway ([ADR 0002](../arquitectura/adr/0002-stack.md)) · **Arquitectura:** [ADR 0003](../arquitectura/adr/0003-arquitectura.md)
+**Estado:** aceptado, con la consulta 2 al docente pendiente (versión básica implementada como filtro de disponibilidad el 2026-10-21) · **Componente:** atlas-catalogo · **Contexto:** Isla 1, issue #7 · **Base:** PostgreSQL, migraciones con Flyway ([ADR 0002](../arquitectura/adr/0002-stack.md)) · **Arquitectura:** [ADR 0003](../arquitectura/adr/0003-arquitectura.md)
 
 ## Alcance y propiedad
 
@@ -166,6 +166,7 @@ Resumen y detalle de cada una. Cada decisión indica por qué se tomó, qué se 
 - **Por qué:** la 3 necesita las ocupaciones, que viven en la cátedra (`GET /api/appointment-occupancies`, por profesional y rango de fechas). atlas no las tiene y el enunciado (6.2) prohíbe consultar al servicio central en cada búsqueda. Además, el cálculo de turnos disponibles es responsabilidad de `cronos-turnos` (enunciado 7). Las opciones 1 y 2 usan solo los horarios semanales locales.
 - **Costo aceptado:** un profesional "disponible" puede tener todos sus turnos ocupados; el filtro dice que atiende, no que le quedan turnos.
 - **Cuándo revisar:** al responder el docente la consulta 2, y al conectar atlas con cronos.
+- **Implementación (2026-10-21):** `AvailabilityFilter` / `ScheduleAvailabilityFilter`, con la disponibilidad efectiva de la decisión F (profesional y categoría habilitados). Ver [implementación](../implementacion/atlas-catalogo.md).
 
 ### B — Clave primaria: ID de la cátedra · Cerrada
 - **Alternativa:** clave propia generada, con el ID de la cátedra como columna única.

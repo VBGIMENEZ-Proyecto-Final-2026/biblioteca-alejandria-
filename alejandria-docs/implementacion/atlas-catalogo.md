@@ -21,6 +21,7 @@ Este documento registra cómo se fue construyendo el código, en el orden en que
 | 2026-10-14 | Sin issue | Visor de la base (DBeaver) y resumen de la implementación contrastado con el código; sin cambios de código | Hecho |
 | 2026-10-21 | Sin issue | Decisiones locales del grupo 1 (regla de sincronización, Flyway, Kafka configurable, disponibilidad) contrastadas con el código; sin cambios de código | Hecho |
 | 2026-10-21 | Grupo 1, issue 2 | Seguridad de Kafka configurable: `PLAINTEXT` por defecto y perfil `kafka-sasl` con `SASL_SSL` | Implementado en local (sin push) |
+| 2026-10-21 | Grupo 1, issue 4 | Filtro de disponibilidad detrás de una interfaz, sobre la copia local | Implementado en local (sin push) |
 
 Tests automatizados tras cada paso: 5 (esqueleto) → 19 (persistencia) → 40 (cliente REST) → 58 (sincronización completa) → 86 (cliente Redis) → 133 (sincronización incremental) → 161 (consumidor de Kafka).
 
@@ -352,7 +353,7 @@ Tests automatizados tras cada paso: 5 (esqueleto) → 19 (persistencia) → 40 (
 | Regla de sincronización conservadora (`local < oldest` → snapshot) | 10 | **Ya implementada** en #19 (`SyncPlanner`, filas 1 a 6 del ADR 0003, con una prueba por fila y por borde) | Solo la documentación: la fila 5 pasa de "pendiente" a "cerrada localmente" |
 | Flyway dueño del esquema, Hibernate solo valida | 4 | **Ya implementada** en #11 (`V1__esquema_catalogo.sql`, `ddl-auto=validate`, pruebas con PostgreSQL real) | Solo la documentación (ADR 0002, D6) |
 | Kafka con `security.protocol` por configuración (default `PLAINTEXT`, perfil SASL opcional) | 11 | **Implementada** el 2026-10-21 en `feature/kafka-seguridad-configurable` (commit local `0710c75`, sin push ni PR) | Ver "Kafka con seguridad configurable", más abajo |
-| Disponibilidad básica detrás de una interfaz | 2 | **Sin implementar** (la búsqueda tampoco existe) | Pendiente; ver la diferencia con la decisión F |
+| Disponibilidad básica detrás de una interfaz | 2 | **Implementada** el 2026-10-21 en `feature/filtro-disponibilidad` (commit local `797bc3c`, sin push ni PR); la búsqueda todavía no existe | Ver "Filtro de disponibilidad", más abajo |
 
 ### Cómo se contrastó cada una
 
@@ -363,9 +364,36 @@ Tests automatizados tras cada paso: 5 (esqueleto) → 19 (persistencia) → 40 (
 - *Migraciones.* El grupo 1 listaba `V1` (catálogo), `V2` (`sync_state`) y `V3` (`processed_events`). Hay una sola `V1` con las tres tablas del catálogo y `sync_state`, y `processed_events` no existe: la decisión D del modelo es no guardar los `eventId` (la idempotencia sale de los *upserts* y de la versión). Una migración ya aplicada no se edita, así que no se parte.
 - *Permisos.* "El usuario de atlas solo tiene permisos sobre su base" se cumple por construcción: cada instancia tiene un único usuario y una única base.
 
-### Lo que sigue pendiente de estas decisiones
+## Filtro de disponibilidad (grupo 1, issue 4)
 
-**Disponibilidad (consulta 2).** Hay una diferencia a resolver antes de implementarla. El texto del grupo 1 define "disponible" como tener al menos un horario semanal habilitado (y, si se informa el día, que sea de ese día), e independiente del filtro de habilitado del profesional. La decisión F del [modelo de datos](../modelo-datos/atlas-catalogo.md) exige además profesional **y** categoría habilitados. Hasta resolverlo, el modelo de datos queda como está. La consulta (un puerto de consulta más una implementación con los datos locales) no cambia en ninguno de los dos casos.
+**Qué se hizo.** El filtro "disponibilidad" de la búsqueda, resuelto solo con datos locales y detrás de una interfaz. Rama `feature/filtro-disponibilidad` (commit local `797bc3c`, **sin push, sin issue y sin PR**). Todavía no hay endpoint ni búsqueda (backlog 11): este paso deja lista la pieza que la búsqueda va a usar.
+
+**Qué hay en el código.**
+- `application.search.AvailabilityFilter`: interfaz con un método, `available(DayOfWeek)`, que devuelve una `Specification<Professional>` (con `null` no se filtra por día). Se devuelve una `Specification` para combinarla con los demás filtros (categoría, nombre, habilitado) en una sola consulta paginada.
+- `ScheduleAvailabilityFilter`: la versión básica. Un profesional está disponible si **él y su categoría están habilitados** y tiene **al menos un horario semanal habilitado** (del día pedido, si se informa). Usa `EXISTS`, así que un profesional con varios horarios no se repite.
+- `ProfessionalRepository` suma `JpaSpecificationExecutor`.
+
+**Pruebas (10 nuevas, contra PostgreSQL real).** Sin horarios; con todos los horarios deshabilitados; con un horario habilitado y sin día; con día que coincide y que no; horario deshabilitado ese día con otro habilitado otro día; profesional deshabilitado con horarios habilitados; categoría deshabilitada; varios horarios sin repetir al profesional; varios profesionales mezclados; y combinación con el filtro literal de habilitado. Cuatro mutaciones manuales (sin la condición de categoría, sin la del profesional, sin el filtro de día y contando horarios deshabilitados) hicieron fallar los tests esperados.
+
+### Decisiones tomadas
+
+**Se mantiene la decisión F (disponibilidad efectiva) y no la lectura literal del texto del grupo 1.**
+- *Alternativa:* "disponible" = tener un horario habilitado, sin mirar si el profesional o la categoría lo están (así se lee el texto del grupo 1 si "independiente del filtro habilitado" significa "no mira la bandera").
+- *Por qué:* la cátedra rechaza crear un hold para un profesional deshabilitado (`PROFESSIONAL_DISABLED`). Con la lectura literal, atlas ofrecería profesionales que `cronos-turnos` después no puede reservar. Con F son coherentes. La frase "independiente del filtro habilitado" se respeta en otro sentido: el parámetro `habilitado` (literal) y `disponible` (efectivo) son filtros separados, y la prueba de combinación lo comprueba.
+- *Costo:* un profesional habilitado en una categoría deshabilitada figura como habilitado pero no como disponible (ya aceptado en F y a documentar en la API).
+- *Revisar:* si la cátedra aclara cómo trata las categorías deshabilitadas o el docente responde la consulta 2 de otra manera.
+
+**Una `Specification` y no una consulta propia ni un predicado en memoria.**
+- *Alternativa:* un método de repositorio con la consulta fija, o filtrar en memoria.
+- *Por qué:* la búsqueda combina varios filtros opcionales y pagina; una `Specification` se compone con `and` y el catálogo es chico. En memoria rompería la paginación.
+- *Costo:* `application` queda atado a Spring Data JPA, que el ADR 0003 ya permite en este paquete.
+- *Revisar:* si la búsqueda termina siendo una consulta propia.
+
+**Sin endpoint ni validación de entrada.** El día de la semana llega ya como `DayOfWeek`; convertir el texto de la API y rechazar valores inválidos es trabajo de la búsqueda.
+
+### Límites de lo probado
+
+Se probó contra PostgreSQL real con datos armados en cada test, no con el catálogo real de la cátedra. La disponibilidad no mira turnos libres reales (decisión A). El README no se tocó, porque `feature/documentacion` lo reescribe y todavía no hay una API que describir: se actualiza al implementar la búsqueda.
 
 ## Kafka con seguridad configurable (grupo 1, issue 2)
 
@@ -405,4 +433,4 @@ No se probó contra un Kafka con autenticación, ni contra el Kafka real de la c
 
 - Seguridad base, búsqueda y estado de la sincronización; después, actualizar la documentación (ítem 13) y juntar las evidencias (ítem 14).
 - Consultas al docente que condicionan lo que sigue: 2 (alcance de "disponibilidad"), 3 (hexagonal liviana) y 10 (`oldest-available-version`, cerrada localmente el 2026-10-21); y D12 (RS256) para la seguridad base.
-- Del grupo 1: filtro de disponibilidad (consulta 2), una vez resuelta la diferencia con la decisión F. Kafka configurable está implementado en local; falta crear el issue, el push y el PR cuando se pida.
+- Del grupo 1: Kafka configurable (issue 2) y filtro de disponibilidad (issue 4) están implementados en local, en dos ramas distintas desde `dev`; falta crear los issues, el push y los PR cuando se pidan. `feature/documentacion` tiene un conflicto en el README con la rama de Kafka (se resuelve tomando el README de documentación y sumándole las dos variables, el párrafo de autenticación y `PerfilKafkaSaslTest`).
