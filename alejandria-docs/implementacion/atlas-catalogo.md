@@ -22,10 +22,11 @@ Este documento registra cómo se fue construyendo el código, en el orden en que
 | 2026-10-21 | Sin issue | Decisiones locales del grupo 1 (regla de sincronización, Flyway, Kafka configurable, disponibilidad) contrastadas con el código; sin cambios de código | Hecho |
 | 2026-10-21 | #27 · PR #23 | Seguridad de Kafka configurable: `PLAINTEXT` por defecto y perfil `kafka-sasl` con `SASL_SSL` | Cerrado |
 | 2026-10-21 | #28 · PR #24 | Filtro de disponibilidad detrás de una interfaz, sobre la copia local | Cerrado |
-| 2026-10-21 | #29 · PR #25 | Estado de la sincronización (`GET /api/sync/status`, apagado por defecto) y pruebas de falla y recuperación | Cerrado |
-| 2026-11-01 | #31 · PR #32 | Búsqueda de profesionales sobre la copia local: categoría, nombre, habilitado y disponibilidad, detalle y categorías | Hecho; el issue sigue abierto hasta proteger los endpoints (ítem 5) |
+| 2026-10-21 | #29 · PR #25 | Estado de la sincronización (`GET /api/sync/status`, apagado por defecto hasta el ítem 5) y pruebas de falla y recuperación | Cerrado |
+| 2026-11-01 | #31 · PR #32 | Búsqueda de profesionales sobre la copia local: categoría, nombre, habilitado y disponibilidad, detalle y categorías | Hecho; protegida por el ítem 5 (PR #34) |
+| 2026-11-01 | #33 · PR #34 | Seguridad base: JWT RS256 de `cronos-turnos` validado con su clave pública, roles por ruta, `401` y `403` como `problem+json` y CORS | PR abierto; el issue sigue abierto hasta fijar los claims con `cronos-turnos` |
 
-Tests automatizados tras cada paso: 5 (esqueleto) → 19 (persistencia) → 40 (cliente REST) → 58 (sincronización completa) → 86 (cliente Redis) → 133 (sincronización incremental) → 161 (consumidor de Kafka) → 199 (Kafka con seguridad configurable, disponibilidad y estado, ya en `dev`) → 248 (búsqueda).
+Tests automatizados tras cada paso: 5 (esqueleto) → 19 (persistencia) → 40 (cliente REST) → 58 (sincronización completa) → 86 (cliente Redis) → 133 (sincronización incremental) → 161 (consumidor de Kafka) → 199 (Kafka con seguridad configurable, disponibilidad y estado, ya en `dev`) → 248 (búsqueda) → 320 (seguridad base).
 
 ## Mapa del código frente al ADR 0003
 
@@ -384,7 +385,7 @@ Tests automatizados tras cada paso: 5 (esqueleto) → 19 (persistencia) → 40 (
 - *Alternativa:* esperar a la seguridad base (ítem 5) para hacer todo junto, o encenderlo sin protección.
 - *Por qué:* el documento de seguridad dice que no se agregan endpoints de negocio antes del ítem 5, y el 5 espera la reunión con el docente (D12). Apagado, la parte de falla y recuperación no se demora y el endpoint no queda abierto por descuido.
 - *Costo:* el criterio "endpoint protegido" del backlog queda **pendiente del ítem 5**. Hasta entonces, quien lo encienda expone la versión y los códigos de error.
-- *Revisar:* al implementar la seguridad base, que también cambia el valor por defecto.
+- *Revisar:* al implementar la seguridad base, que también cambia el valor por defecto. **Hecho en el ítem 5**: ahora exige `ROLE_ADMIN` y está encendido por defecto.
 
 **La consulta no toma el candado.**
 - *Alternativa:* leer con `FOR UPDATE` para ver siempre el estado más reciente.
@@ -478,7 +479,7 @@ No se probó contra un Kafka con autenticación, ni contra el Kafka real de la c
 - `application.search`: los casos de uso `SearchProfessionals`, `GetProfessionalDetail` y `ListCategories`, los criterios con su validación (`ProfessionalSearchCriteria`) y las especificaciones de los filtros simples. La disponibilidad reutiliza `AvailabilityFilter` (grupo 1, issue 4).
 - `adapters.in.web`: `ProfessionalsController` solo traduce parámetros y JSON; `ProfessionalsExceptionHandler` traduce los errores a `application/problem+json` (`400 BUSQUEDA_INVALIDA`, `404 PROFESIONAL_NO_ENCONTRADO`, `503 CATALOGO_NO_DISPONIBLE`) con mensajes fijos que no repiten el valor recibido.
 - `WeeklyScheduleRepository.findByProfessionalId` para el detalle.
-- Propiedad `atlas.search.enabled` (`ATLAS_SEARCH_ENDPOINT`, apagada por defecto).
+- Propiedad `atlas.search.enabled` (`ATLAS_SEARCH_ENDPOINT`; apagada por defecto hasta el ítem 5, encendida desde entonces).
 
 **Pruebas (49 nuevas, 248 en total).** `BusquedaProfesionalesTest` (29, PostgreSQL real): cada filtro y sus combinaciones, comodines de `LIKE`, tildes, orden y desempate, paginación, un profesional con varios horarios sin repetirse, detalle ordenado, profesional deshabilitado y categorías. `ProfessionalSearchCriteriaTest` (7, sin Spring): límites de `size`, `page` y `name`, y `dayOfWeek` sin `available`. `ProfessionalsControllerTest` (11) y `BusquedaApagadaPorDefectoTest` (1): traducción de parámetros, JSON, errores `400`, `404` y `503` sin detalle interno, y que apagada responde `404`. Una regla nueva de ArchUnit comprueba que `application.search` no depende de los puertos hacia la cátedra, de los adaptadores ni de la sincronización.
 
@@ -518,7 +519,7 @@ No se probó contra un Kafka con autenticación, ni contra el Kafka real de la c
 - *Alternativa:* encenderla ya.
 - *Por qué:* el enunciado (9) pide proteger los endpoints que no sean públicos, y todavía no existe la seguridad.
 - *Costo:* la app KMP no puede usarla hasta el ítem 5.
-- *Revisar:* al implementar la seguridad base, que cambia el valor por defecto a encendido.
+- *Revisar:* al implementar la seguridad base, que cambia el valor por defecto a encendido. **Hecho en el ítem 5.**
 
 **El detalle de un profesional deshabilitado se devuelve con `enabled: false`**, y solo un ID inexistente da `404`: la copia local nunca borra (decisión C).
 
@@ -533,9 +534,74 @@ No se probó contra un Kafka con autenticación, ni contra el Kafka real de la c
 
 Se probó contra PostgreSQL real con datos armados en cada test y, además, contra el snapshot real de la cátedra (versión 1: 8 categorías, 24 profesionales y 44 horarios), ver [la evidencia](../evidencias/isla-1-busqueda.md). En esa verificación no se buscó ningún nombre con tilde, así que la regla de tildes se probó solo con datos propios. No se midió el rendimiento: con 24 profesionales no dice nada. No hay prueba de acceso no autenticado, porque la seguridad aún no existe: llega con el ítem 5. La disponibilidad sigue sin mirar turnos libres reales (decisión A).
 
+## Ítem 5 · Seguridad base
+
+**Qué se hizo.** atlas pasa a ser un servidor de recursos: valida los JWT que emite `cronos-turnos` con su clave pública y protege todo lo que expone. Issue #33 y PR #34 de `atlas-catalogo` (PR abierto al 2026-11-01). La decisión de fondo, cómo se autentican los servicios entre sí, está en el [ADR 0004](../arquitectura/adr/0004-autenticacion-entre-servicios.md): se propaga el JWT del usuario firmado con RS256.
+
+**Qué hay en el código.**
+- `config.SecurityConfig`: la cadena de filtros (sin sesión, sin CSRF, sin login por formulario ni autenticación básica), las reglas por ruta, el decodificador del JWT y el CORS.
+- `config.SecurityProperties` y `config.JwtPublicKeys`: las propiedades (`atlas.security.*`) y la carga de la clave pública, con validación al arrancar.
+- `adapters.in.security.SecurityProblemHandler`: traduce los rechazos a `401 NO_AUTENTICADO` y `403 SIN_PERMISO` como `problem+json` y los registra en el log.
+- `scripts/dev-token.sh`: firma tokens de desarrollo con una clave local, para probar sin `cronos-turnos`.
+- Reglas de ArchUnit: la seguridad HTTP no depende del dominio, de los casos de uso ni de la web, y `application` no puede importar nada de Spring Security.
+- Dependencias: `spring-boot-starter-security` y `spring-boot-starter-oauth2-resource-server`, y el starter de test de seguridad.
+
+**Pruebas (71 nuevas más una regla de ArchUnit; 320 en total).** `SeguridadApiTest` (32, aplicación completa con firmas RS256 reales): sin token en cada ruta, tokens vencidos, aún no válidos, con la firma de otra clave, con el payload adulterado, `HS256` con la clave pública como secreto, otro algoritmo RSA, `alg: none`, sin `exp` o sin `sub`, el token en un lugar distinto del encabezado, roles por ruta, escrituras y rutas desconocidas denegadas, identificadores enviados por el cliente, que el rechazo no revele el motivo y que quede en el log sin el token. `CorsApiTest` (8) y `CorsPorDefectoTest` (2). `SecurityPropertiesTest` (19) y `JwtPublicKeysTest` (10): las propiedades y la carga de la clave. Los tests existentes de estado y de recuperación ahora consultan como administrador, y los de controlador saltean los filtros porque solo prueban la traducción a JSON.
+
+**Pruebas de mutación manuales.** Se rompieron a propósito nueve reglas y los tests detectaron las nueve: no validar el vencimiento (2 tests fallan), abrir el estado a `ROLE_USER` (2), autenticar en vez de denegar el resto (2), no exigir `sub` y `exp` (1), dejar público todo Actuator (2), CORS con credenciales (1), CORS con escritura (2), quitar `WWW-Authenticate` (4) y revelar el rol en el `403` (2).
+
+### Decisiones tomadas al implementar
+
+**La clave pública se carga de un archivo o de una variable, y sin ella no se arranca.**
+- *Alternativas:* JWKS desde `cronos-turnos` (`jwk-set-uri`), o arrancar con la API abierta o cerrada sin avisar.
+- *Por qué:* con JWKS atlas dependería de que cronos esté levantado para validar tokens, y los servicios deben ser independientes (enunciado 3). Arrancar sin clave dejaría una API sin protección o rechazando todo sin explicación.
+- *Costo:* rotar la clave exige reiniciar atlas; y el `.env` de cada desarrollador necesita la variable nueva.
+- *Revisar:* si aparece más de un emisor o hay que rotar claves sin reiniciar (JWKS).
+
+**Solo se acepta RS256, con una clave RSA de 2048 bits o más.** Un decodificador que aceptara el algoritmo que declara el token permitiría el ataque de confusión de algoritmo (un `HS256` firmado con la clave pública, que no es secreta). Una clave privada pegada por error, una clave corta o una que no es RSA se rechazan al arrancar, sin repetir su contenido.
+
+**`sub` y `exp` son obligatorios.**
+- *Alternativa:* aceptar lo que Spring valida por defecto.
+- *Por qué:* un token sin vencimiento es válido para siempre, y el enunciado pide validar la vigencia. Sin `sub` no hay usuario al que atribuir los rechazos.
+- *Costo:* un emisor que no ponga alguno de los dos queda rechazado; cronos debe emitirlos.
+
+**Los permisos salen del claim `auth`, sin prefijo, y se aceptan como texto o como lista.**
+- *Alternativa:* el `scope` de OAuth2 (con prefijo `SCOPE_`) o un claim propio.
+- *Por qué:* es el claim de JHipster, y el enunciado pide un modelo de usuario compatible con el suyo; así sirve si cronos usa JHipster o no. Los roles ya traen `ROLE_`.
+- *Costo:* es una propuesta de atlas: cronos todavía no confirmó que emita `sub` y `auth`. El nombre del claim es configurable (`ATLAS_JWT_AUTHORITIES_CLAIM`) para que no sea un cambio de código.
+- *Revisar:* cuando exista cronos.
+
+**Se deniega todo lo que no está listado, exista o no la ruta.**
+- *Alternativa:* "cualquier otra ruta autenticada".
+- *Por qué:* una ruta nueva que se agregue sin pensar en la seguridad quedaría cerrada y no abierta a cualquier usuario, y un `403` en lugar de un `404` no revela qué rutas existen.
+- *Costo:* cada endpoint nuevo exige tocar la configuración de seguridad. Es intencional.
+
+**El estado de la sincronización exige `ROLE_ADMIN`; la búsqueda, `ROLE_USER` o `ROLE_ADMIN`.** El estado muestra cuándo y por qué falla la integración con la cátedra, información que un usuario común no necesita. La búsqueda es lo que la app muestra a cualquier usuario autenticado; el administrador también puede usarla.
+
+**Los `401` y `403` no explican el motivo.** No dicen si falló la firma, el vencimiento o el algoritmo, ni qué rol faltaba. *Costo:* quien integra no recibe la pista en la respuesta; la tiene en el log, que registra el método, la ruta y, en un `403`, el usuario, y nunca el token.
+
+**Sin sesión, y CSRF desactivado.** La API usa un token en un encabezado, no cookies: un navegador no lo adjunta solo en una petición de otro sitio, que es lo que CSRF previene. Se aceptan los tokens únicamente en `Authorization: Bearer`, no en un parámetro de la URL, que quedaría en logs y historiales.
+
+**CORS: lista explícita de orígenes, sin comodines y sin credenciales; ninguno por defecto.** La app Android no es un navegador y no necesita CORS; existe para un posible cliente web. Un origen con comodín o con ruta se rechaza al arrancar.
+
+**La búsqueda y el estado pasan a estar encendidos por defecto**, ahora que están protegidos (era lo anunciado en los ítems 11 y 12).
+
+**Una clave pública de prueba versionada, con una excepción en `.gitignore`.** `.gitignore` excluye `*.pem` para que nadie versione una clave por accidente; los tests de contexto necesitan una clave pública, así que se versiona solo `src/test/resources/jwt-test-public.pem` (la privada se descartó) con una excepción para ese único archivo. Los tests de seguridad generan sus propios pares.
+
+### Qué se descubrió al probar
+
+- **Un test pasaba por la razón equivocada.** Los casos de "token vencido" se rechazaban porque el token tenía `exp` anterior a `iat` (Spring lo prohíbe al construir el JWT), no por estar vencido. Se corrigió con tokens coherentes (emitidos una hora antes de vencer) y recién ahí quedaron probados el vencimiento y la tolerancia de 60 segundos.
+- **Con CORS sin orígenes, la consulta previa responde `200` vacío**, no `401` ni `403`: el filtro CORS de Spring no reenvía nunca una consulta previa a la cadena. Lo que protege es que no trae ningún `Access-Control-*`, así que el navegador la bloquea; el test afirma eso y no el estado.
+- **Un error propio de documentación:** el README decía que con la búsqueda apagada las rutas responderían `403`; en realidad un token válido recibe `404` (la regla lo autoriza y la ruta no existe) y sin token `401`. Se corrigió antes de publicar.
+- **Un `.gitignore` útil se interponía:** `*.pem` impedía versionar la clave pública de prueba. Se detectó revisando el diff antes de commitear y se confirmó con un clon limpio, donde los tests de contexto pasan.
+
+### Límites de lo probado
+
+Se probó con la aplicación completa y firmas RS256 reales (los pares los genera el test), y con la aplicación corriendo contra una base temporal y tokens firmados con `scripts/dev-token.sh`: ver [la evidencia](../evidencias/isla-1-seguridad.md). **No se probó contra un token real de `cronos-turnos`**, porque todavía no existe: los claims `sub` y `auth` son una propuesta. No se validan `iss` ni `aud`, no hay revocación ni límite de pedidos, y el canal entre la app y atlas no va cifrado (ver la [seguridad](../arquitectura/seguridad-atlas-catalogo.md)).
+
 ## Pendiente
 
-- Seguridad base (ítem 5), que también protege la búsqueda y el estado de la sincronización y les cambia el valor por defecto a encendido; después, un endpoint de lectura para `cronos-turnos`, actualizar la documentación (ítem 13) y juntar las evidencias (ítem 14).
-- Consultas al docente que condicionan lo que sigue: 2 (alcance de "disponibilidad"), 3 (hexagonal liviana) y 10 (`oldest-available-version`, cerrada localmente el 2026-10-21); y D12 (RS256) para la seguridad base.
-- Del ítem 12: falta proteger el endpoint con la seguridad base (ítem 5).
-- Del grupo 1: Kafka configurable (#27) y el filtro de disponibilidad (#28) están mergeados a `dev`; la disponibilidad ya se usa en la búsqueda (ítem 11). Falta confirmar con el docente las consultas 2, 4, 10 y 11, resueltas localmente.
+- Mergear el PR #34 (seguridad base) y cerrar a mano los issues #31 y #33 cuando corresponda (el #33 queda abierto hasta fijar los claims con `cronos-turnos`).
+- Un endpoint de lectura para `cronos-turnos` (horario semanal vigente de un profesional), con su contrato documentado y protegido con este mismo esquema; el Dockerfile y la app dentro del compose; las evidencias (ítem 14) y la documentación final (ítem 13).
+- Consultas al docente que condicionan lo que sigue: 1 (autenticación entre servicios, resuelta localmente en el ADR 0004), 2 (alcance de "disponibilidad"), 3 (hexagonal liviana) y 10 (`oldest-available-version`, cerrada localmente el 2026-10-21).
+- Confirmar con el docente las consultas 2, 4, 10 y 11, resueltas localmente.

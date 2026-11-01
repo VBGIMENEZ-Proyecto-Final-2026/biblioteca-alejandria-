@@ -1,6 +1,6 @@
 # ADR 0002 · Stack tecnológico de atlas-catalogo
 
-**Estado:** aceptado, con D12 pendiente de confirmar con el docente · **Componente:** atlas-catalogo · **Contexto:** Isla 1, issue #5
+**Estado:** aceptado, con D12 implementado en atlas (2026-11-01) y pendiente de confirmar con el docente · **Componente:** atlas-catalogo · **Contexto:** Isla 1, issue #5
 
 ## Contexto
 
@@ -31,7 +31,7 @@ Restricciones del enunciado que condicionan el stack:
 | D9 | Redis con Lettuce (Spring Data Redis) | Decidido |
 | D10 | Cliente REST: `RestClient` + interfaz declarativa | Decidido |
 | D11 | Reintentos: resiliencia nativa de Framework 7 | Decidido |
-| D12 | JWT RS256 con clave pública | Propuesto (se confirma tras la reunión con el docente) |
+| D12 | JWT RS256 con clave pública | Decidido por el alumno e implementado (2026-11-01, [ADR 0004](0004-autenticacion-entre-servicios.md)); se confirma con el docente |
 | D13 | Testing: JUnit 5 + Testcontainers + ArchUnit | Decidido |
 
 ## Decisiones, alternativas, pros y contras
@@ -91,12 +91,12 @@ Restricciones del enunciado que condicionan el stack:
 - **Contras:** API nueva; verificar contra la documentación al implementarla.
 - **Regla:** reintentos acotados y solo sobre lecturas idempotentes (snapshot REST, lecturas Redis). Nunca ciclos ilimitados.
 
-### D12 — Seguridad: JWT RS256 con clave pública (alternativa: HS256 con secreto compartido) · Propuesto, a confirmar con el docente
+### D12 — Seguridad: JWT RS256 con clave pública (alternativa: HS256 con secreto compartido) · Decidido e implementado, a confirmar con el docente
 - **Pros RS256:** atlas solo conoce la clave pública y no puede forjar tokens; sin dependencia de runtime hacia el emisor.
 - **Contras RS256:** hay que gestionar el par de claves y publicar la pública.
 - **HS256 — pros:** trivial de configurar. **Contras:** el secreto compartido permite forjar tokens desde cualquiera de los dos servicios.
 - **Riesgo:** quien emite los tokens es `cronos-turnos`. Si allí se usa JHipster, su configuración por defecto firma con secreto compartido (HS512) y habría que personalizarla para RS256. Si no fuera viable, se registra un ADR nuevo que reemplace a este y atlas pasa a validar con secreto compartido, documentando la limitación.
-- Relacionada con la autenticación entre servicios (JWT propagado vs técnico): consulta 1 de las consultas al docente.
+- Relacionada con la autenticación entre servicios (JWT propagado vs técnico): consulta 1 de las consultas al docente. **Resuelta en el [ADR 0004](0004-autenticacion-entre-servicios.md)**: se propaga el JWT del usuario firmado con RS256, y atlas lo valida con la clave pública (ítem 5, implementado el 2026-11-01).
 
 ### D13 — Testing: JUnit 5, AssertJ, Mockito, Testcontainers (Postgres, Kafka, Redis), `MockRestServiceServer`/WireMock para la cátedra, ArchUnit · Decidido
 - **Pros:** las queries y las transacciones del sync se prueban contra motores reales; ArchUnit verifica las reglas de arquitectura (ver ADR 0003).
