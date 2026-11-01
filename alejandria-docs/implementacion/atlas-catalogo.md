@@ -521,7 +521,7 @@ No se probó contra un Kafka con autenticación, ni contra el Kafka real de la c
 - *Costo:* la app KMP no puede usarla hasta el ítem 5.
 - *Revisar:* al implementar la seguridad base, que cambia el valor por defecto a encendido. **Hecho en el ítem 5.**
 
-**El detalle de un profesional deshabilitado se devuelve con `enabled: false`**, y solo un ID inexistente da `404`: la copia local nunca borra (decisión C).
+**El detalle de un profesional deshabilitado se devuelve con `enabled: false`**, y solo un ID inexistente da `404`: la copia local nunca borra (M3 del modelo de datos: bajas lógicas, sin borrado físico).
 
 ### Cambios al diseño original (ítem 11)
 
