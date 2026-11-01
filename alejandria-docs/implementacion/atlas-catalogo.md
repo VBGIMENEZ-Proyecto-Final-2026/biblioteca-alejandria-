@@ -592,6 +592,7 @@ Se probó contra PostgreSQL real con datos armados en cada test y, además, cont
 
 - **Un test pasaba por la razón equivocada.** Los casos de "token vencido" se rechazaban porque el token tenía `exp` anterior a `iat` (Spring lo prohíbe al construir el JWT), no por estar vencido. Se corrigió con tokens coherentes (emitidos una hora antes de vencer) y recién ahí quedaron probados el vencimiento y la tolerancia de 60 segundos.
 - **Con CORS sin orígenes, la consulta previa responde `200` vacío**, no `401` ni `403`: el filtro CORS de Spring no reenvía nunca una consulta previa a la cadena. Lo que protege es que no trae ningún `Access-Control-*`, así que el navegador la bloquea; el test afirma eso y no el estado.
+- **El script de desarrollo daba un token "vencido" incoherente.** `scripts/dev-token.sh` con una vigencia negativa emitía `iat` posterior a `exp`, así que el `401` de la demostración en vivo no se debía al vencimiento. Se detectó al preparar el material de explicación y se corrigió (issue #35, PR #36). El vencimiento propiamente dicho ya estaba bien probado por los tests.
 - **Un error propio de documentación:** el README decía que con la búsqueda apagada las rutas responderían `403`; en realidad un token válido recibe `404` (la regla lo autoriza y la ruta no existe) y sin token `401`. Se corrigió antes de publicar.
 - **Un `.gitignore` útil se interponía:** `*.pem` impedía versionar la clave pública de prueba. Se detectó revisando el diff antes de commitear y se confirmó con un clon limpio, donde los tests de contexto pasan.
 
