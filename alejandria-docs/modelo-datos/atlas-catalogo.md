@@ -140,6 +140,8 @@ WHERE p.enabled AND c.enabled
 
 El detalle de un profesional devuelve todos sus horarios con su propio `enabled`. La paginación y el orden se resuelven en la consulta; el orden por defecto es apellido y nombre.
 
+**Implementación (2026-11-01).** Los parámetros de la API van en inglés (`categoryId`, `name`, `enabled`, `available`, `dayOfWeek`). `name` se busca en "nombre apellido" (decisión E ampliada), `available=false` devuelve el complemento, `dayOfWeek` exige `available`, el orden es fijo (apellido, nombre e ID) y `size` llega hasta 100. Detalle en [implementación](../implementacion/atlas-catalogo.md).
+
 ## Decisiones
 
 Resumen y detalle de cada una. Cada decisión indica por qué se tomó, qué se descartó, qué costo se acepta y cuándo conviene revisarla.
@@ -191,6 +193,7 @@ Resumen y detalle de cada una. Cada decisión indica por qué se tomó, qué se 
 - **Por qué:** `ILIKE '%texto%'` no usa un índice común, pero el catálogo es chico y una lectura completa es barata. Evita extensiones y migraciones de más.
 - **Costo aceptado:** no ignora tildes ("Gomez" no encuentra "Gómez") y no escala a cientos de miles de filas.
 - **Cuándo revisar:** si la búsqueda se nota lenta o si los usuarios necesitan ignorar tildes; ambas son migraciones aditivas.
+- **Implementación (2026-11-01):** el texto se busca en "nombre apellido" y no en cada campo por separado, para que "Ana Gomez" encuentre al profesional. Sigue sin ignorar tildes.
 
 ### F — Habilitado: filtro literal, disponibilidad efectiva · Cerrada
 - **Alternativas:** efectivo en ambos, o literal en ambos.

@@ -23,8 +23,9 @@ Este documento registra cómo se fue construyendo el código, en el orden en que
 | 2026-10-21 | #27 · PR #23 | Seguridad de Kafka configurable: `PLAINTEXT` por defecto y perfil `kafka-sasl` con `SASL_SSL` | Cerrado |
 | 2026-10-21 | #28 · PR #24 | Filtro de disponibilidad detrás de una interfaz, sobre la copia local | Cerrado |
 | 2026-10-21 | #29 · PR #25 | Estado de la sincronización (`GET /api/sync/status`, apagado por defecto) y pruebas de falla y recuperación | Cerrado |
+| 2026-11-01 | #31 · PR #32 | Búsqueda de profesionales sobre la copia local: categoría, nombre, habilitado y disponibilidad, detalle y categorías | Hecho; el issue sigue abierto hasta proteger los endpoints (ítem 5) |
 
-Tests automatizados tras cada paso: 5 (esqueleto) → 19 (persistencia) → 40 (cliente REST) → 58 (sincronización completa) → 86 (cliente Redis) → 133 (sincronización incremental) → 161 (consumidor de Kafka) → 199 (Kafka con seguridad configurable, disponibilidad y estado, ya en `dev`).
+Tests automatizados tras cada paso: 5 (esqueleto) → 19 (persistencia) → 40 (cliente REST) → 58 (sincronización completa) → 86 (cliente Redis) → 133 (sincronización incremental) → 161 (consumidor de Kafka) → 199 (Kafka con seguridad configurable, disponibilidad y estado, ya en `dev`) → 248 (búsqueda).
 
 ## Mapa del código frente al ADR 0003
 
@@ -367,7 +368,7 @@ Tests automatizados tras cada paso: 5 (esqueleto) → 19 (persistencia) → 40 (
 
 ## Ítem 12 · Estado y manejo de errores de la sincronización
 
-**Qué se hizo.** Se expone el estado de la sincronización y se comprueba, con pruebas de punta a punta, que una caída de la cátedra, de Redis o de la aplicación al aplicar no corrompe la copia y que se recupera sola. Rama `feature/estado-sincronizacion` (commit `d125797`, rebasado como `053400d`; issue #29, PR #25, mergeado a `dev` el 2026-11-01). El borrador del issue está en `prog2/issue-estado-sync-atlas-catalogo.md`.
+**Qué se hizo.** Se expone el estado de la sincronización y se comprueba, con pruebas de punta a punta, que una caída de la cátedra, de Redis o de la aplicación al aplicar no corrompe la copia y que se recupera sola. Rama `feature/estado-sincronizacion` (commit `d125797`, rebasado como `053400d`; issue #29, PR #25, mergeado a `dev` el 2026-11-01).
 
 **Qué hay en el código.**
 - `GetSyncStatus` (en `application.sync`): lee `sync_state` en una transacción de solo lectura, **sin** `FOR UPDATE`, y devuelve un `SyncStatusView`.
@@ -403,7 +404,7 @@ La falla "la base de datos no responde" se prueba para el endpoint (`503`) con l
 
 ## Filtro de disponibilidad (grupo 1, issue 4)
 
-**Qué se hizo.** El filtro "disponibilidad" de la búsqueda, resuelto solo con datos locales y detrás de una interfaz. Rama `feature/filtro-disponibilidad` (commit `797bc3c`; issue #28, PR #24, mergeado a `dev` el 2026-11-01). Todavía no hay endpoint ni búsqueda (backlog 11): este paso deja lista la pieza que la búsqueda va a usar.
+**Qué se hizo.** El filtro "disponibilidad" de la búsqueda, resuelto solo con datos locales y detrás de una interfaz. Rama `feature/filtro-disponibilidad` (commit `797bc3c`; issue #28, PR #24, mergeado a `dev` el 2026-11-01). Todavía no hay endpoint ni búsqueda (backlog 11): este paso deja lista la pieza que la búsqueda va a usar. La búsqueda llegó después (issue #31, PR #32): ver el ítem 11.
 
 **Qué hay en el código.**
 - `application.search.AvailabilityFilter`: interfaz con un método, `available(DayOfWeek)`, que devuelve una `Specification<Professional>` (con `null` no se filtra por día). Se devuelve una `Specification` para combinarla con los demás filtros (categoría, nombre, habilitado) en una sola consulta paginada.
@@ -466,9 +467,75 @@ Se probó contra PostgreSQL real con datos armados en cada test, no con el catá
 
 No se probó contra un Kafka con autenticación, ni contra el Kafka real de la cátedra: hoy no exige credenciales y no hay un servidor con SASL a mano. Lo verificado es la configuración que recibe el cliente y que el secreto no se registra. Un `SASL_SSL` real también requiere que el servidor tenga un certificado que el cliente confíe (el almacén de confianza de la JVM); si la cátedra usara uno propio, habría que agregar la configuración del *truststore*, que no se incluyó. Tampoco se repitió la verificación manual contra la cátedra real, porque la ruta por defecto (`PLAINTEXT`) no cambió y la cubren los tests con un Kafka real en contenedor.
 
+## Ítem 11 · Búsqueda de profesionales
+
+**Qué se hizo.** La búsqueda y el detalle de profesionales sobre la copia local, con los cuatro filtros que pide el enunciado (4.1): categoría, nombre, estado habilitado y disponibilidad. Issue #31 y PR #32 de `atlas-catalogo`, mergeado a `dev` el 2026-11-01. **El issue sigue abierto**: falta proteger los endpoints con JWT (ítem 5), y hasta entonces están apagados por defecto.
+
+**Qué hay en el código.**
+- `GET /api/professionals`: filtros opcionales y combinables con "y" (`categoryId`, `name`, `enabled`, `available`, `dayOfWeek`), orden fijo (apellido, nombre, ID) y paginación (`page` desde 0, `size` de 1 a 100, por defecto 20).
+- `GET /api/professionals/{id}`: el profesional con su categoría y todos sus horarios semanales, habilitados o no, ordenados por día y hora; devuelve también a un profesional deshabilitado.
+- `GET /api/categories`: las categorías por nombre, con filtro opcional por estado. Es de esta tarea y no estaba en el borrador: sin ella la app no sabe qué `categoryId` mandar.
+- `application.search`: los casos de uso `SearchProfessionals`, `GetProfessionalDetail` y `ListCategories`, los criterios con su validación (`ProfessionalSearchCriteria`) y las especificaciones de los filtros simples. La disponibilidad reutiliza `AvailabilityFilter` (grupo 1, issue 4).
+- `adapters.in.web`: `ProfessionalsController` solo traduce parámetros y JSON; `ProfessionalsExceptionHandler` traduce los errores a `application/problem+json` (`400 BUSQUEDA_INVALIDA`, `404 PROFESIONAL_NO_ENCONTRADO`, `503 CATALOGO_NO_DISPONIBLE`) con mensajes fijos que no repiten el valor recibido.
+- `WeeklyScheduleRepository.findByProfessionalId` para el detalle.
+- Propiedad `atlas.search.enabled` (`ATLAS_SEARCH_ENDPOINT`, apagada por defecto).
+
+**Pruebas (49 nuevas, 248 en total).** `BusquedaProfesionalesTest` (29, PostgreSQL real): cada filtro y sus combinaciones, comodines de `LIKE`, tildes, orden y desempate, paginación, un profesional con varios horarios sin repetirse, detalle ordenado, profesional deshabilitado y categorías. `ProfessionalSearchCriteriaTest` (7, sin Spring): límites de `size`, `page` y `name`, y `dayOfWeek` sin `available`. `ProfessionalsControllerTest` (11) y `BusquedaApagadaPorDefectoTest` (1): traducción de parámetros, JSON, errores `400`, `404` y `503` sin detalle interno, y que apagada responde `404`. Una regla nueva de ArchUnit comprueba que `application.search` no depende de los puertos hacia la cátedra, de los adaptadores ni de la sincronización.
+
+**Pruebas de mutación manuales.** Se rompieron a propósito cuatro reglas y los tests detectaron las cuatro: no escapar los comodines (1 test falla), ignorar `available=false` (3), quitar el desempate por ID (1) y no ordenar los horarios del detalle (2).
+
+### Decisiones tomadas al implementar
+
+**`available=false` devuelve el complemento de los disponibles.**
+- *Alternativa:* aceptar solo `available=true` y ignorar `false`, o rechazarlo.
+- *Por qué:* es simétrico y se explica solo; ignorarlo en silencio devolvería todo y parecería un filtro que no filtra. Una prueba comprueba que disponibles y no disponibles suman el total sin solaparse.
+- *Costo:* "no disponible" incluye al deshabilitado, al de categoría deshabilitada y al que no tiene horarios habilitados; no distingue el motivo.
+- *Revisar:* si la app no lo usa, se puede quitar.
+
+**`dayOfWeek` sin `available` es un `400`, no se ignora.**
+- *Alternativa:* que `dayOfWeek` implique `available=true`, o ignorarlo.
+- *Por qué:* quien pide un día espera un resultado filtrado por día; ignorarlo devolvería profesionales que no atienden ese día, y que lo implique oculta una decisión de la API.
+- *Costo:* un error más que el cliente puede recibir.
+- *Revisar:* si la app prefiere que el día implique disponibilidad.
+
+**El nombre se busca en "nombre apellido".**
+- *Alternativa:* la decisión E literal: `first_name` o `last_name` por separado.
+- *Por qué:* con la versión literal, "Ana Gomez" no encuentra a nadie, y es lo primero que escribe un usuario. Buscar en el nombre completo es un superconjunto: sigue encontrando por nombre o por apellido sueltos.
+- *Costo:* "gomez ana" no coincide, porque el orden es nombre y luego apellido. Sigue sin ignorar tildes (decisión E): "nunez" no encuentra a "Núñez", y hay una prueba que lo documenta. Los comodines `%` y `_` se tratan como texto.
+- *Revisar:* si hace falta ignorar tildes o tolerar el orden inverso (`unaccent` o trigramas, migraciones aditivas).
+
+**Orden fijo y sin parámetro de orden.** Apellido, nombre e ID. *Alternativa:* `sort` libre. *Por qué:* un nombre de columna que llega del cliente es superficie de error y de ataque, y el catálogo no lo necesita. *Costo:* la app no puede ordenar de otra manera. *Revisar:* si la interfaz lo pide.
+
+**Las vistas de `application.search` son el cuerpo JSON, sin una segunda capa de DTO.**
+- *Alternativa:* un `Response` por endpoint, como en el estado de la sincronización.
+- *Por qué:* son registros simples sin nada de persistencia, y duplicarlos habría sumado cinco clases sin aportar aislamiento real.
+- *Costo:* cambiar una vista cambia el contrato público.
+- *Revisar:* al definir el contrato con `cronos-turnos`, que puede necesitar su propia forma.
+
+**Una página propia (`PageResult`) y no la `Page` de Spring Data.** El formato JSON de `Page` no es un contrato pensado para clientes externos; el propio contrato queda estable y mínimo (`content`, `page`, `size`, `totalElements`, `totalPages`).
+
+**Apagada por defecto, como el estado de la sincronización.**
+- *Alternativa:* encenderla ya.
+- *Por qué:* el enunciado (9) pide proteger los endpoints que no sean públicos, y todavía no existe la seguridad.
+- *Costo:* la app KMP no puede usarla hasta el ítem 5.
+- *Revisar:* al implementar la seguridad base, que cambia el valor por defecto a encendido.
+
+**El detalle de un profesional deshabilitado se devuelve con `enabled: false`**, y solo un ID inexistente da `404`: la copia local nunca borra (decisión C).
+
+### Cambios al diseño original (ítem 11)
+
+- Los parámetros de la API van en inglés (`categoryId`, `name`, `enabled`, `available`, `dayOfWeek`), como el resto de la API, y no con los nombres del modelo de datos (`categoriaId`, `nombre`, `habilitado`, `disponible`, `diaSemana`).
+- El filtro de nombre busca en el nombre completo (decisión E ampliada).
+- Se agregó `GET /api/categories`.
+- `available` acepta `false` (complemento).
+
+### Límites de lo probado
+
+Se probó contra PostgreSQL real con datos armados en cada test y, además, contra el snapshot real de la cátedra (versión 1: 8 categorías, 24 profesionales y 44 horarios), ver [la evidencia](../evidencias/isla-1-busqueda.md). En esa verificación no se buscó ningún nombre con tilde, así que la regla de tildes se probó solo con datos propios. No se midió el rendimiento: con 24 profesionales no dice nada. No hay prueba de acceso no autenticado, porque la seguridad aún no existe: llega con el ítem 5. La disponibilidad sigue sin mirar turnos libres reales (decisión A).
+
 ## Pendiente
 
-- Seguridad base, búsqueda y estado de la sincronización; después, actualizar la documentación (ítem 13) y juntar las evidencias (ítem 14).
+- Seguridad base (ítem 5), que también protege la búsqueda y el estado de la sincronización y les cambia el valor por defecto a encendido; después, un endpoint de lectura para `cronos-turnos`, actualizar la documentación (ítem 13) y juntar las evidencias (ítem 14).
 - Consultas al docente que condicionan lo que sigue: 2 (alcance de "disponibilidad"), 3 (hexagonal liviana) y 10 (`oldest-available-version`, cerrada localmente el 2026-10-21); y D12 (RS256) para la seguridad base.
 - Del ítem 12: falta proteger el endpoint con la seguridad base (ítem 5).
-- Del grupo 1: Kafka configurable (#27) y el filtro de disponibilidad (#28) están mergeados a `dev`; la disponibilidad sigue sin endpoint hasta la búsqueda (ítem 11). Falta confirmar con el docente las consultas 2, 4, 10 y 11, resueltas localmente.
+- Del grupo 1: Kafka configurable (#27) y el filtro de disponibilidad (#28) están mergeados a `dev`; la disponibilidad ya se usa en la búsqueda (ítem 11). Falta confirmar con el docente las consultas 2, 4, 10 y 11, resueltas localmente.
