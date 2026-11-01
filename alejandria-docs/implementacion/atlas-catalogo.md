@@ -24,7 +24,7 @@ Este documento registra cómo se fue construyendo el código, en el orden en que
 | 2026-10-21 | #28 · PR #24 | Filtro de disponibilidad detrás de una interfaz, sobre la copia local | Cerrado |
 | 2026-10-21 | #29 · PR #25 | Estado de la sincronización (`GET /api/sync/status`, apagado por defecto hasta el ítem 5) y pruebas de falla y recuperación | Cerrado |
 | 2026-11-01 | #31 · PR #32 | Búsqueda de profesionales sobre la copia local: categoría, nombre, habilitado y disponibilidad, detalle y categorías | Hecho; protegida por el ítem 5 (PR #34) |
-| 2026-11-01 | #33 · PR #34 | Seguridad base: JWT RS256 de `cronos-turnos` validado con su clave pública, roles por ruta, `401` y `403` como `problem+json` y CORS | PR abierto; el issue sigue abierto hasta fijar los claims con `cronos-turnos` |
+| 2026-11-01 | #33 · PR #34 | Seguridad base: JWT RS256 de `cronos-turnos` validado con su clave pública, roles por ruta, `401` y `403` como `problem+json` y CORS | Mergeado a `dev` el 2026-11-01; el issue sigue abierto hasta fijar los claims con `cronos-turnos` |
 
 Tests automatizados tras cada paso: 5 (esqueleto) → 19 (persistencia) → 40 (cliente REST) → 58 (sincronización completa) → 86 (cliente Redis) → 133 (sincronización incremental) → 161 (consumidor de Kafka) → 199 (Kafka con seguridad configurable, disponibilidad y estado, ya en `dev`) → 248 (búsqueda) → 320 (seguridad base).
 
@@ -536,7 +536,7 @@ Se probó contra PostgreSQL real con datos armados en cada test y, además, cont
 
 ## Ítem 5 · Seguridad base
 
-**Qué se hizo.** atlas pasa a ser un servidor de recursos: valida los JWT que emite `cronos-turnos` con su clave pública y protege todo lo que expone. Issue #33 y PR #34 de `atlas-catalogo` (PR abierto al 2026-11-01). La decisión de fondo, cómo se autentican los servicios entre sí, está en el [ADR 0004](../arquitectura/adr/0004-autenticacion-entre-servicios.md): se propaga el JWT del usuario firmado con RS256.
+**Qué se hizo.** atlas pasa a ser un servidor de recursos: valida los JWT que emite `cronos-turnos` con su clave pública y protege todo lo que expone. Issue #33 y PR #34 de `atlas-catalogo` (mergeado a `dev` el 2026-11-01). La decisión de fondo, cómo se autentican los servicios entre sí, está en el [ADR 0004](../arquitectura/adr/0004-autenticacion-entre-servicios.md): se propaga el JWT del usuario firmado con RS256.
 
 **Qué hay en el código.**
 - `config.SecurityConfig`: la cadena de filtros (sin sesión, sin CSRF, sin login por formulario ni autenticación básica), las reglas por ruta, el decodificador del JWT y el CORS.
@@ -601,7 +601,7 @@ Se probó con la aplicación completa y firmas RS256 reales (los pares los gener
 
 ## Pendiente
 
-- Mergear el PR #34 (seguridad base) y cerrar a mano los issues #31 y #33 cuando corresponda (el #33 queda abierto hasta fijar los claims con `cronos-turnos`).
+- Cerrar a mano el issue #31 (la búsqueda cumple todos sus criterios desde el PR #34). El #33 queda abierto hasta fijar los claims con `cronos-turnos`.
 - Un endpoint de lectura para `cronos-turnos` (horario semanal vigente de un profesional), con su contrato documentado y protegido con este mismo esquema; el Dockerfile y la app dentro del compose; las evidencias (ítem 14) y la documentación final (ítem 13).
 - Consultas al docente que condicionan lo que sigue: 1 (autenticación entre servicios, resuelta localmente en el ADR 0004), 2 (alcance de "disponibilidad"), 3 (hexagonal liviana) y 10 (`oldest-available-version`, cerrada localmente el 2026-10-21).
 - Confirmar con el docente las consultas 2, 4, 10 y 11, resueltas localmente.

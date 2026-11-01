@@ -6,7 +6,7 @@
 
 **Fuera de alcance:** comunicación y contrato entre `atlas-catalogo` y `cronos-turnos`, registro y login de usuarios finales, turnos y reservas, y `hermes-app`.
 
-**Estado del backlog:** los issues de decisiones de diseño (1 a 3) y el esqueleto del proyecto (4) están hechos (issues #5, #6, #7 y #9 de `atlas-catalogo`). Migraciones y persistencia (6) está hecho (issue #11, PR #13). El cliente REST de la cátedra (7) también está hecho (issue #12, PR #14). La sincronización completa (8) también está hecha (issue #15, PR #16). El cliente Redis (9) también está hecho (issue #17, PR #18). La sincronización incremental (10) también está hecha (issue #19, PR #20). El consumidor de Kafka (15) también está hecho (issue #21, PR #22). El estado de la sincronización (12) y la búsqueda (11) están hechos (issues #29 y #31, PR #25 y #32). La seguridad base (5), que los protege, está implementada (issue #33, PR #34 abierto al 2026-11-01). La documentación (13) tiene una primera entrega hecha (issue #30, PR #26) y se completa con lo nuevo. Del grupo 1 también están hechos Kafka configurable (issue #27, PR #23) y el filtro de disponibilidad (issue #28, PR #24). El resto de las tareas de la isla se agrega cuando sus decisiones estén justificadas. La numeración es la del backlog completo.
+**Estado del backlog:** los issues de decisiones de diseño (1 a 3) y el esqueleto del proyecto (4) están hechos (issues #5, #6, #7 y #9 de `atlas-catalogo`). Migraciones y persistencia (6) está hecho (issue #11, PR #13). El cliente REST de la cátedra (7) también está hecho (issue #12, PR #14). La sincronización completa (8) también está hecha (issue #15, PR #16). El cliente Redis (9) también está hecho (issue #17, PR #18). La sincronización incremental (10) también está hecha (issue #19, PR #20). El consumidor de Kafka (15) también está hecho (issue #21, PR #22). El estado de la sincronización (12) y la búsqueda (11) están hechos (issues #29 y #31, PR #25 y #32). La seguridad base (5), que los protege, está implementada (issue #33, PR #34, mergeado a `dev` el 2026-11-01). La documentación (13) tiene una primera entrega hecha (issue #30, PR #26) y se completa con lo nuevo. Del grupo 1 también están hechos Kafka configurable (issue #27, PR #23) y el filtro de disponibilidad (issue #28, PR #24). El resto de las tareas de la isla se agrega cuando sus decisiones estén justificadas. La numeración es la del backlog completo.
 
 Formato de cada issue: Componente `atlas`, descripción, criterios, referencias y dependencias (igual que `isla-0-itaca.md`). Las decisiones viven en este repo; los issues solo describen la tarea.
 
@@ -66,7 +66,7 @@ Proteger todos los endpoints salvo los públicos (salud): validar el JWT (firma,
 - [x] Tests de autenticación y autorización, con firmas RS256 reales y tokens maliciosos.
 - [x] Limitaciones y supuestos anotados para la documentación de seguridad.
 - [ ] Los claims del token (`sub`, `auth`) quedan fijados por `cronos-turnos` cuando exista.
-Estado: hecho (issue #33 y PR #34 de `atlas-catalogo`, PR abierto al 2026-11-01); el issue queda abierto hasta fijar los claims con `cronos-turnos` y confirmar con el docente la consulta 1. Detalle de las decisiones en `implementacion/atlas-catalogo.md`, ADR en `arquitectura/adr/0004-autenticacion-entre-servicios.md` y verificación con la aplicación real en `evidencias/isla-1-seguridad.md`.
+Estado: hecho (issue #33 y PR #34 de `atlas-catalogo`, mergeado a `dev` el 2026-11-01); el issue queda abierto hasta fijar los claims con `cronos-turnos` y confirmar con el docente la consulta 1. Detalle de las decisiones en `implementacion/atlas-catalogo.md`, ADR en `arquitectura/adr/0004-autenticacion-entre-servicios.md` y verificación con la aplicación real en `evidencias/isla-1-seguridad.md`.
 Referencias: enunciado 9; ADR 0002 (D12) y 0004; consultas 1 y 7.
 Depende de: 4 (hecho). Bloquea: 11 y 12 (ya protegidos), y el endpoint de lectura para `cronos-turnos` (por abrir).
 
@@ -151,7 +151,7 @@ Exponer la búsqueda de profesionales y su detalle con horarios semanales, resue
 - [x] Paginación con orden fijo.
 - [x] Endpoints protegidos con JWT: exigen `ROLE_USER` o `ROLE_ADMIN` (ítem 5, PR #34) y están encendidos por defecto (`ATLAS_SEARCH_ENDPOINT`).
 - [x] Tests de filtros y de errores; el de acceso no autenticado llega con la seguridad.
-Estado: hecho (issue #31 y PR #32 de `atlas-catalogo`, mergeado a `dev` el 2026-11-01); la protección con JWT llega con el ítem 5 (PR #34) y el issue queda abierto hasta que se mergee. Detalle de las decisiones en `implementacion/atlas-catalogo.md` y verificación contra la cátedra real en `evidencias/isla-1-busqueda.md`.
+Estado: hecho (issue #31 y PR #32 de `atlas-catalogo`, mergeado a `dev` el 2026-11-01); la protección con JWT llegó con el ítem 5 (PR #34, mergeado a `dev` el 2026-11-01), con lo que cumple todos sus criterios y el issue puede cerrarse. Detalle de las decisiones en `implementacion/atlas-catalogo.md` y verificación contra la cátedra real en `evidencias/isla-1-busqueda.md`.
 Referencias: enunciado 4.1, 5.7 y 6.2; `modelo-datos/atlas-catalogo.md` (sección "Búsqueda", decisiones A, E y F).
 Depende de: 6, 8 y 10 (hechos) y 5 (solo para proteger los endpoints). Bloquea: evidencias (14).
 
@@ -161,7 +161,7 @@ Informar el estado de la sincronización (versión local, último resultado, err
 - [x] Caída de la cátedra, de Redis o de Kafka no corrompe la copia local y la app se recupera sola.
 - [x] Cada falla queda registrada sin exponer secretos.
 - [x] Tests de falla y recuperación.
-Estado: hecho (issue #29 y PR #25 de `atlas-catalogo`, mergeado a `dev` el 2026-11-01); la protección llega con la seguridad base (ítem 5, PR #34). Detalle de las decisiones en `implementacion/atlas-catalogo.md` y contrato y mapa de fallas en `arquitectura/sincronizacion-atlas-catalogo.md`.
+Estado: hecho (issue #29 y PR #25 de `atlas-catalogo`, mergeado a `dev` el 2026-11-01); la protección llegó con la seguridad base (ítem 5, PR #34). Detalle de las decisiones en `implementacion/atlas-catalogo.md` y contrato y mapa de fallas en `arquitectura/sincronizacion-atlas-catalogo.md`.
 Referencias: enunciado 4.1 y 8; referencia de integración 13 y 18.
 Depende de: 8, 9, 10 y 15 (hechos) y 5 (solo para proteger el endpoint).
 
