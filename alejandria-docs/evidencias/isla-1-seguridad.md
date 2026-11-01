@@ -28,7 +28,7 @@ Esta evidencia cubre "rechazo de accesos no autenticados o no autorizados" (enun
 | `ROLE_GUEST` (rol que no existe en atlas) → `GET /api/categories` | `403` `SIN_PERMISO` |
 | `ROLE_ADMIN` → `POST /api/professionals` | `403` `SIN_PERMISO` (ninguna escritura está permitida) |
 | `ROLE_ADMIN` → `GET /api/lo-que-sea` | `403` `SIN_PERMISO` (se deniega en vez de revelar si la ruta existe) |
-| Token vencido hace una hora → `GET /api/categories` | `401` `NO_AUTENTICADO` |
+| Token con `exp` una hora en el pasado → `GET /api/categories` | `401` `NO_AUTENTICADO` (**ver la observación sobre este caso**) |
 | Token firmado con **otra clave** (con `ROLE_USER` y `ROLE_ADMIN`) → `GET /api/sync/status` | `401` `NO_AUTENTICADO` |
 | Texto que no es un JWT → `GET /api/categories` | `401` `NO_AUTENTICADO` |
 
@@ -75,6 +75,7 @@ En el log completo hubo **0 apariciones de un token** (cadenas `eyJ`) y 0 de la 
 
 ## Observaciones
 
+- **El caso del token vencido, con una salvedad que descubrí después:** el script de desarrollo emitía ese token con `iat` (ahora) **posterior** a `exp` (una hora atrás), es decir, un token incoherente, que Spring rechaza por esa razón y no por estar vencido. El `401` fue correcto, pero esta ejecución no prueba el vencimiento en sí. **El vencimiento y la tolerancia de 60 s sí están probados** en `SeguridadApiTest` con tokens coherentes (emitidos una hora antes de vencer), y verificados por mutación: al quitar la validación de vigencia, esos tests fallan. El script se corrigió después (rama `fix/dev-token-iat`, aún sin publicar).
 - **Lo que se comprobó:** que sin credenciales o con un token inválido, vencido o mal firmado no se accede a nada; que un token válido accede solo a lo que su rol permite; que lo no listado se deniega; y que los rechazos quedan registrados sin el token.
 - **Lo que no se comprobó:** el flujo con un token emitido por `cronos-turnos` (los claims `sub` y `auth` son una propuesta), el canal cifrado entre la app y atlas (atlas escucha en HTTP), ni el comportamiento con un reloj muy desfasado más allá de la tolerancia de 60 s, que sí cubre un test.
 - La búsqueda y el estado quedaron encendidos por defecto; con esta evidencia se cierra el pendiente de "no encenderlos sin seguridad" de las secciones de los ítems 11 y 12.
