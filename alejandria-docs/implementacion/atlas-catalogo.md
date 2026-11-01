@@ -17,14 +17,14 @@ Este documento registra cómo se fue construyendo el código, en el orden en que
 | 2026-10-12 | #17 · PR #18 | Cliente Redis de la cátedra: metadata, cambios y entidades; verificado contra la cátedra real | Cerrado |
 | 2026-10-12 | #19 · PR #20 | Sincronización incremental: planificador, aplicación de cambios por versión, arranque y verificación periódica | Cerrado |
 | 2026-10-12 | #21 · PR #22 | Consumidor de Kafka del aviso `CatalogUpdated` como disparador de la sincronización | Cerrado |
-| 2026-10-12 | Ítem 13 | Documentación: README ejecutable desde cero, estrategia de sincronización y seguridad | En curso (primera entrega) |
+| 2026-10-12 | #30 · PR #26 | Documentación: README ejecutable desde cero, estrategia de sincronización y seguridad (ítem 13) | Cerrado (primera entrega; se completa con 5 y 11) |
 | 2026-10-14 | Sin issue | Visor de la base (DBeaver) y resumen de la implementación contrastado con el código; sin cambios de código | Hecho |
 | 2026-10-21 | Sin issue | Decisiones locales del grupo 1 (regla de sincronización, Flyway, Kafka configurable, disponibilidad) contrastadas con el código; sin cambios de código | Hecho |
-| 2026-10-21 | Grupo 1, issue 2 | Seguridad de Kafka configurable: `PLAINTEXT` por defecto y perfil `kafka-sasl` con `SASL_SSL` | Implementado en local (sin push) |
-| 2026-10-21 | Grupo 1, issue 4 | Filtro de disponibilidad detrás de una interfaz, sobre la copia local | Implementado en local (sin push) |
-| 2026-10-21 | Ítem 12 | Estado de la sincronización (`GET /api/sync/status`, apagado por defecto) y pruebas de falla y recuperación | Implementado en local (sin issue ni push) |
+| 2026-10-21 | #27 · PR #23 | Seguridad de Kafka configurable: `PLAINTEXT` por defecto y perfil `kafka-sasl` con `SASL_SSL` | Cerrado |
+| 2026-10-21 | #28 · PR #24 | Filtro de disponibilidad detrás de una interfaz, sobre la copia local | Cerrado |
+| 2026-10-21 | #29 · PR #25 | Estado de la sincronización (`GET /api/sync/status`, apagado por defecto) y pruebas de falla y recuperación | Cerrado |
 
-Tests automatizados tras cada paso: 5 (esqueleto) → 19 (persistencia) → 40 (cliente REST) → 58 (sincronización completa) → 86 (cliente Redis) → 133 (sincronización incremental) → 161 (consumidor de Kafka).
+Tests automatizados tras cada paso: 5 (esqueleto) → 19 (persistencia) → 40 (cliente REST) → 58 (sincronización completa) → 86 (cliente Redis) → 133 (sincronización incremental) → 161 (consumidor de Kafka) → 199 (Kafka con seguridad configurable, disponibilidad y estado, ya en `dev`).
 
 ## Mapa del código frente al ADR 0003
 
@@ -353,8 +353,8 @@ Tests automatizados tras cada paso: 5 (esqueleto) → 19 (persistencia) → 40 (
 |---|---|---|---|
 | Regla de sincronización conservadora (`local < oldest` → snapshot) | 10 | **Ya implementada** en #19 (`SyncPlanner`, filas 1 a 6 del ADR 0003, con una prueba por fila y por borde) | Solo la documentación: la fila 5 pasa de "pendiente" a "cerrada localmente" |
 | Flyway dueño del esquema, Hibernate solo valida | 4 | **Ya implementada** en #11 (`V1__esquema_catalogo.sql`, `ddl-auto=validate`, pruebas con PostgreSQL real) | Solo la documentación (ADR 0002, D6) |
-| Kafka con `security.protocol` por configuración (default `PLAINTEXT`, perfil SASL opcional) | 11 | **Implementada** el 2026-10-21 en `feature/kafka-seguridad-configurable` (commit local `0710c75`, sin push ni PR) | Ver "Kafka con seguridad configurable", más abajo |
-| Disponibilidad básica detrás de una interfaz | 2 | **Implementada** el 2026-10-21 en `feature/filtro-disponibilidad` (commit local `797bc3c`, sin push ni PR); la búsqueda todavía no existe | Ver "Filtro de disponibilidad", más abajo |
+| Kafka con `security.protocol` por configuración (default `PLAINTEXT`, perfil SASL opcional) | 11 | **Implementada** el 2026-10-21 en `feature/kafka-seguridad-configurable` (commit `0710c75`; issue #27, PR #23, mergeado a `dev` el 2026-11-01) | Ver "Kafka con seguridad configurable", más abajo |
+| Disponibilidad básica detrás de una interfaz | 2 | **Implementada** el 2026-10-21 en `feature/filtro-disponibilidad` (commit `797bc3c`; issue #28, PR #24, mergeado a `dev` el 2026-11-01); la búsqueda todavía no existe | Ver "Filtro de disponibilidad", más abajo |
 
 ### Cómo se contrastó cada una
 
@@ -367,7 +367,7 @@ Tests automatizados tras cada paso: 5 (esqueleto) → 19 (persistencia) → 40 (
 
 ## Ítem 12 · Estado y manejo de errores de la sincronización
 
-**Qué se hizo.** Se expone el estado de la sincronización y se comprueba, con pruebas de punta a punta, que una caída de la cátedra, de Redis o de la aplicación al aplicar no corrompe la copia y que se recupera sola. Rama `feature/estado-sincronizacion` (commit local `d125797`, **sin push, sin issue y sin PR**: queda en local por decisión del 2026-10-14). El borrador del issue está en `prog2/issue-estado-sync-atlas-catalogo.md`.
+**Qué se hizo.** Se expone el estado de la sincronización y se comprueba, con pruebas de punta a punta, que una caída de la cátedra, de Redis o de la aplicación al aplicar no corrompe la copia y que se recupera sola. Rama `feature/estado-sincronizacion` (commit `d125797`, rebasado como `053400d`; issue #29, PR #25, mergeado a `dev` el 2026-11-01). El borrador del issue está en `prog2/issue-estado-sync-atlas-catalogo.md`.
 
 **Qué hay en el código.**
 - `GetSyncStatus` (en `application.sync`): lee `sync_state` en una transacción de solo lectura, **sin** `FOR UPDATE`, y devuelve un `SyncStatusView`.
@@ -403,7 +403,7 @@ La falla "la base de datos no responde" se prueba para el endpoint (`503`) con l
 
 ## Filtro de disponibilidad (grupo 1, issue 4)
 
-**Qué se hizo.** El filtro "disponibilidad" de la búsqueda, resuelto solo con datos locales y detrás de una interfaz. Rama `feature/filtro-disponibilidad` (commit local `797bc3c`, **sin push, sin issue y sin PR**). Todavía no hay endpoint ni búsqueda (backlog 11): este paso deja lista la pieza que la búsqueda va a usar.
+**Qué se hizo.** El filtro "disponibilidad" de la búsqueda, resuelto solo con datos locales y detrás de una interfaz. Rama `feature/filtro-disponibilidad` (commit `797bc3c`; issue #28, PR #24, mergeado a `dev` el 2026-11-01). Todavía no hay endpoint ni búsqueda (backlog 11): este paso deja lista la pieza que la búsqueda va a usar.
 
 **Qué hay en el código.**
 - `application.search.AvailabilityFilter`: interfaz con un método, `available(DayOfWeek)`, que devuelve una `Specification<Professional>` (con `null` no se filtra por día). Se devuelve una `Specification` para combinarla con los demás filtros (categoría, nombre, habilitado) en una sola consulta paginada.
@@ -434,7 +434,7 @@ Se probó contra PostgreSQL real con datos armados en cada test, no con el catá
 
 ## Kafka con seguridad configurable (grupo 1, issue 2)
 
-**Qué se hizo.** El consumidor de Kafka puede autenticarse sin tocar código si la cátedra lo exige. Por defecto sigue igual: `PLAINTEXT`, sin ninguna variable extra. El perfil `kafka-sasl` (archivo `application-kafka-sasl.yaml`) activa `SASL_SSL` con mecanismo `PLAIN`, y el usuario y la contraseña van únicamente en `CATEDRA_KAFKA_SASL_JAAS_CONFIG`. Rama `feature/kafka-seguridad-configurable` (commit local `0710c75`, **sin push, sin issue y sin PR**: queda en local por decisión del 2026-10-14).
+**Qué se hizo.** El consumidor de Kafka puede autenticarse sin tocar código si la cátedra lo exige. Por defecto sigue igual: `PLAINTEXT`, sin ninguna variable extra. El perfil `kafka-sasl` (archivo `application-kafka-sasl.yaml`) activa `SASL_SSL` con mecanismo `PLAIN`, y el usuario y la contraseña van únicamente en `CATEDRA_KAFKA_SASL_JAAS_CONFIG`. Rama `feature/kafka-seguridad-configurable` (commit `0710c75`; issue #27, PR #23, mergeado a `dev` el 2026-11-01).
 
 **Qué cambia en el código.**
 - `CatedraKafkaProperties` suma `securityProtocol` (por defecto `PLAINTEXT`) y `saslJaasConfig`, con validación que impide el arranque con un mensaje que dice cuál es el problema: protocolo distinto de `PLAINTEXT` o `SASL_SSL`, `SASL_SSL` sin JAAS, y JAAS con `PLAINTEXT`. El JAAS no aparece en `toString`.
@@ -470,5 +470,5 @@ No se probó contra un Kafka con autenticación, ni contra el Kafka real de la c
 
 - Seguridad base, búsqueda y estado de la sincronización; después, actualizar la documentación (ítem 13) y juntar las evidencias (ítem 14).
 - Consultas al docente que condicionan lo que sigue: 2 (alcance de "disponibilidad"), 3 (hexagonal liviana) y 10 (`oldest-available-version`, cerrada localmente el 2026-10-21); y D12 (RS256) para la seguridad base.
-- Del ítem 12: falta crear el issue, el push y el PR cuando se pidan, y proteger el endpoint con la seguridad base (ítem 5).
-- Del grupo 1: Kafka configurable (issue 2) y filtro de disponibilidad (issue 4) están implementados en local, en dos ramas distintas desde `dev`; falta crear los issues, el push y los PR cuando se pidan. `feature/documentacion` tiene un conflicto en el README con la rama de Kafka (se resuelve tomando el README de documentación y sumándole las dos variables, el párrafo de autenticación y `PerfilKafkaSaslTest`).
+- Del ítem 12: falta proteger el endpoint con la seguridad base (ítem 5).
+- Del grupo 1: Kafka configurable (#27) y el filtro de disponibilidad (#28) están mergeados a `dev`; la disponibilidad sigue sin endpoint hasta la búsqueda (ítem 11). Falta confirmar con el docente las consultas 2, 4, 10 y 11, resueltas localmente.
